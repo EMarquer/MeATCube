@@ -1,1 +1,1 @@
-from energymap import *
+from .energymap import *

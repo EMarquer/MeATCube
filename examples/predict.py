@@ -32,7 +32,10 @@ source_similarity = lambda x,y: np.exp(- np.linalg.norm(x - y))
 outcome_similarity = lambda x,y: (True if x == y else False)
 cb = mc.CB(X_train, y_train, y_values, source_similarity, outcome_similarity)
 
-# predict
+# predict one
+y_pred_0 = cb.predict(X_test.iloc[0])
+
+# predict multiple
 y_pred = cb.predict(X_test)
 
 # evaluate
