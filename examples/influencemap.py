@@ -20,8 +20,8 @@ if USE_STRING_VALUES:
 else:
     y_values = np.unique(y)
 
-# stratified splitting of the data
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=100, random_state=42, stratify=y)
+# stratified splitting of the data (take only 8 cases to have incompetent enough cases)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=142, random_state=42, stratify=y)
 
 # add root directory to be able to import MeATCube
 import sys, os
@@ -33,19 +33,27 @@ source_similarity = lambda x,y: np.exp(- np.linalg.norm(x - y))
 outcome_similarity = lambda x,y: (True if x == y else False)
 cb = mc.CB(X_train, y_train, y_values, source_similarity, outcome_similarity)
 
+# plot the best and worst case
 from meatcube.plotting.preprocessing import prepare_ax
-from meatcube.plotting.energymap import energymap
+from meatcube.plotting.influencemap import influencemap
 import matplotlib.pyplot as plt
 
-# Ex 1: plotting the energymap
-energymap(cb, X)
+# Ex 1: influence of the most competent case from the CB
+ax, transform = prepare_ax(cb, X)
+influencemap(cb, X_test, y_test, transform=transform, ax=ax)
 plt.show()
 plt.clf()
 
-# Ex 2: plotting the energy map, and plot the cb on top
+# Ex 2: influence of the least competent case from the CB
+ax, transform = prepare_ax(cb, X)
+influencemap(cb, X_test, y_test, case="worst", transform=transform, ax=ax)
+plt.show()
+plt.clf()
+
+# Ex 3: influence of an arbitrary case from the CB, and plot the cb on top
 from meatcube.plotting.cbscatter import plot_cb, plot_ref
 ax, transform = prepare_ax(cb, X)
-energymap(cb, transform=transform, ax=ax)
+influencemap(cb, X_test, y_test, case=2, transform=transform, ax=ax)
 plot_cb(cb, alpha=0.5, transform=transform, ax=ax)
 plot_ref(cb, X_test, y_test, cb.predict(X_test), alpha=0.5, transform=transform, ax=ax)
 plt.show()

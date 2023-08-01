@@ -1,6 +1,6 @@
 from ..meatcubecb import MeATCubeCB
 from ..metrics import confidence
-from typing import List
+from typing import List, Tuple, Any
 import numpy as np
 from sklearn.decomposition import PCA
 import seaborn as sns
@@ -40,7 +40,7 @@ def energymap_points(X, transform=None, ax: plt.Axes=None, resolution=50):
         # add a small margin
         x_scale = -(x_min - x_max)
         y_scale = -(y_min - y_max)
-        (x_min, x_max) = (x_min - (.05 * y_scale), x_max + (.05 * y_scale))
+        (x_min, x_max) = (x_min - (.05 * x_scale), x_max + (.05 * x_scale))
         (y_min, y_max) = (y_min - (.05 * y_scale), y_max + (.05 * y_scale))
 
         x_step = x_scale/resolution
@@ -78,8 +78,9 @@ def fill_energymap_values(cb: MeATCubeCB, xk, yk, X_2D_heatmap, X_heatmap):
             z[outcome_id, j, i] = conf_ij
     return z
 
-def energymap(cb: MeATCubeCB, X=None, transform=None, outcome_colors=None, ax: plt.Axes=None, resolution=50, alpha=.35) -> List[plc.QuadMesh]:
+def energymap(cb: MeATCubeCB, X=None, transform=None, outcome_colors=None, ax: plt.Axes=None, resolution=50, alpha=.35) -> Tuple[List[plc.QuadMesh], Any]:
     if outcome_colors is None: outcome_colors = sns.color_palette()
+    if X is None: X = cb.CB_source
 
     # generate points
     xk, yk, X_2D_heatmap, X_heatmap, transform, (x_min, x_max), (y_min, y_max) = energymap_points(

@@ -310,7 +310,7 @@ class MeATCubeCB(Generic[SourceSpaceElement, OutcomeSpaceElement]):
             return pred_outcome
         
         
-    def competence_contrib(self,
+    def influence(self,
                    test_cases_sources: Iterable[SourceSpaceElement],
                    test_cases_outcomes: Iterable[OutcomeSpaceElement],
                    strategy: Literal["MCE", "hinge"]="hinge",
@@ -425,9 +425,10 @@ class MeATCubeCB(Generic[SourceSpaceElement, OutcomeSpaceElement]):
             if index is not None:
                 l_mce_i = inversion_rates_i[:,~mask] - inversion_rates_i[:,mask]
         else:
-            l_mce = inversion_rates[~mask].min(dim=-1) - inversion_rates[mask]
+            l_mce = inversion_rates[~mask].min(dim=-1).values - inversion_rates[mask]
             if index is not None:
-                l_mce_i = inversion_rates_i[:,~mask].min(dim=-1) - inversion_rates_i[:,mask]
+                mask_max = (mask.unsqueeze(0)) * (inversion_rates_i.max().detach() + 1) # trick to "exclude" the mask from the min
+                l_mce_i = (inversion_rates_i + mask_max).min(dim=-1).values - inversion_rates_i[:,mask]
         # l_mce: [|S|]
         # l_mce_i: [|index|, |S|]
 
