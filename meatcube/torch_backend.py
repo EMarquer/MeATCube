@@ -290,7 +290,7 @@ class MeATCubeEnergyComputations(object):
             reflexive_sim_source, reflexive_sim_outcome)
     
     @staticmethod
-    def _cube_gamma_i_included(cube: torch.Tensor, i) -> torch.Tensor:
+    def _cube_gamma_i_included(cube: torch.Tensor, i: int, normalize=NORMALIZE) -> torch.Tensor:
         """The idea is to return only the inversions at a certain index.
         
         For a base `CB` of `M` cases and a new case `i`, computes the inversions involving `i`.
@@ -303,12 +303,21 @@ class MeATCubeEnergyComputations(object):
 
         :return: The competence of `CB` w.r.t the case `i`.
         """
-        return (
-            (cube.select(i, dim=-1).sum(dim=[-1,-2], type=int) + # gamma_abi
-             cube.select(i, dim=-2).sum(dim=[-1,-2], type=int) + # gamma_aic
-             cube.select(i, dim=-3).sum(dim=[-1,-2], type=int))  # gamma_ibc
+        inversions = (
+            (cube.select(index=i, dim=-1).sum(dim=[-1,-2]) + # gamma_abi
+             cube.select(index=i, dim=-2).sum(dim=[-1,-2]) + # gamma_aic
+             cube.select(index=i, dim=-3).sum(dim=[-1,-2]))  # gamma_ibc
              - (# [cannot invert itself] cube.select(i, dim=-1).select(i, dim=-1).sum(dim=-1, type=int) + # gamma_aii
-                cube.select(i, dim=-1).select(i, dim=-2).sum(dim=[-1,-2], type=int) + # gamma_ibi
-                cube.select(i, dim=-2).select(i, dim=-2).sum(dim=[-1,-2], type=int))  # gamma_iic
+                cube.select(index=i, dim=-1).select(index=i, dim=-2).sum(dim=-1) + # gamma_ibi
+                cube.select(index=i, dim=-2).select(index=i, dim=-2).sum(dim=-1))  # gamma_iic
             # [cannot invert itself] - cube.select(i, dim=-1).select(i, dim=-1).select(i, dim=-1) # gamma_iii
         )
+
+        if normalize:
+            return (inversions).pow(1./3) / (cube.size(-1))
+        else:
+            return inversions
+        
+#         , type=int
+# , type=int
+# , type=int
