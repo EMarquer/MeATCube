@@ -451,9 +451,9 @@ class MeATCubeCB(Generic[SourceSpaceElement, OutcomeSpaceElement]):
 
         # aggregate the results
         if aggregation == "sum":
-            l = l.sum(dim = -1)
+            l = l.sum(dim = -1, dtype=float)
         elif aggregation == "mean":
-            l = l.mean(dim = -1)
+            l = l.mean(dim = -1, dtype=float)
         # l: if aggregation is None or "none": [|S|] if index is None or int, [|index|, |S|] if List[int]
         # l: if aggregation is "sum" or "mean": [] if index is None or int, [|index|] if List[int]
         return l if (index is None or was_list) else l.squeeze(0)

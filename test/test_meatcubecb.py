@@ -2,6 +2,7 @@
 - can it handle the various kinds of data as CB?
 - can it handle the various kinds of data as input to the functions?
 """
+import pytest
 
 # load meatcube
 import sys, os
