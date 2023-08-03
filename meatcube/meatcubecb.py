@@ -2,6 +2,7 @@ from __future__ import annotations # for self-referring type hints
 import torch, numpy as np
 import pandas as pd
 from typing import Union, Literal, Tuple, Optional, Callable, Generic, TypeVar, Iterable, List
+from collections.abc import Sequence
 from scipy.spatial.distance import squareform, pdist, cdist
 
 try:
@@ -29,7 +30,7 @@ def numpy_source_or_outcome(values):
         except ValueError:
             return np.array(values)
 
-class MeATCubeCB(Generic[SourceSpaceElement, OutcomeSpaceElement]):
+class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
     """Collection of tensors and metrics that automate the computations of several metrics based on the number of 
     inversions, and supports addition and deletion of cases.
     
@@ -49,6 +50,13 @@ class MeATCubeCB(Generic[SourceSpaceElement, OutcomeSpaceElement]):
         self.outcome_sim_matrix = None # [|CB|, |CB|]
         self.outcome_sim_vectors = None # [|R|, |CB|], one vector per possible outcome
         self.cube = None # [|CB|, |CB|, |CB|]
+        super(Sequence).__init__()
+
+    def __len__(self):
+        return self.CB_source.shape[0]
+
+    def __getitem__(self, index):
+        return self.CB_source[index], self.CB_outcome[index]
 
     def compute_outcome_sim_vectors(self, force_recompute: bool=False) -> None:
         """Computes the similarity vectors for each possible outcime."""
@@ -323,6 +331,22 @@ class MeATCubeCB(Generic[SourceSpaceElement, OutcomeSpaceElement]):
         return self.competence(test_cases_sources,
                                test_cases_outcomes,
                                index=list(range(len(self.CB_source))),
+                               strategy=strategy,
+                               margin=margin,
+                               aggregation=aggregation,
+                               normalize=normalize)
+    def case_competences(self,
+                   test_cases_sources: Iterable[SourceSpaceElement],
+                   test_cases_outcomes: Iterable[OutcomeSpaceElement],
+                   strategy: Literal["MCE", "hinge"]="hinge",
+                   margin: float=0.1,
+                   aggregation: Literal[None, "none", "sum", "mean"]="mean",
+                   normalize=NORMALIZE) -> torch.Tensor:
+        """Alias for self.influence.
+        
+        Short-hand for `self.competence(..., index=list(range(len(self.CB_source))))`."""
+        return self.influence(test_cases_sources,
+                               test_cases_outcomes,
                                strategy=strategy,
                                margin=margin,
                                aggregation=aggregation,
