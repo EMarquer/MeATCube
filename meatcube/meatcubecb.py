@@ -6,10 +6,10 @@ from collections.abc import Sequence
 from scipy.spatial.distance import squareform, pdist, cdist
 
 try:
-    from .torch_backend import MeATCubeEnergyComputations, remove_index, append_symmetric, NORMALIZE
+    from .torch_backend import MeATCubeEnergyComputations, remove_index, append_symmetric, NORMALIZE, pairwise_dist, cart_dist
 except ImportError as e:
     try:
-        from torch_backend import MeATCubeEnergyComputations, remove_index, append_symmetric, NORMALIZE
+        from torch_backend import MeATCubeEnergyComputations, remove_index, append_symmetric, NORMALIZE, pairwise_dist, cart_dist
     except ImportError:
         raise e
 
@@ -61,9 +61,9 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
     def compute_outcome_sim_vectors(self, force_recompute: bool=False) -> None:
         """Computes the similarity vectors for each possible outcime."""
         if force_recompute or self.outcome_sim_vectors is None:
-            potential = np.array(self.potential_outcomes).reshape(-1, self.CB_outcome[0].size)
+            potential = self.prep_outcome_for_dist(self.potential_outcomes)
             self.outcome_sim_vectors = torch.tensor(cdist(
-                potential, self.CB_outcome.reshape(-1, self.CB_outcome[0].size), metric=self.sim_function_outcome))
+                potential, self.prep_outcome_for_dist(self.CB_outcome), metric=self.sim_function_outcome))
 
     def is_source_list(self, value: Union[SourceSpaceElement, Iterable[SourceSpaceElement]]) -> bool:
         if isinstance(value, torch.Tensor):
@@ -87,6 +87,16 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
             return (self.CB_outcome.ndim <= 1) or isinstance(value[0], Iterable)
         else:
             return False
+    def prep_source_for_dist(self, value: Union[SourceSpaceElement, Iterable[SourceSpaceElement]]) -> bool:
+        if hasattr(self.CB_source[0], "size"):
+            return np.array(value).reshape(-1,self.CB_source[0].size)
+        else:
+            return np.array(value).reshape(-1,1)
+    def prep_outcome_for_dist(self, value: Union[SourceSpaceElement, Iterable[SourceSpaceElement]]) -> bool:
+        if hasattr(self.CB_outcome[0], "size"):
+            return np.array(value).reshape(-1,self.CB_outcome[0].size)
+        else:
+            return np.array(value).reshape(-1,1)
 
     def outcome_index(self, outcome: Union[OutcomeSpaceElement, Iterable[OutcomeSpaceElement]]) -> torch.LongTensor:
         if isinstance(self.potential_outcomes, np.ndarray):
@@ -102,10 +112,10 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
     def compute_sim_matrix(self, force_recompute: bool=False) -> None:
         """Computes the similarity matrices."""
         if force_recompute or self.source_sim_matrix is None:
-            self.source_sim_matrix = torch.tensor(squareform(pdist(self.CB_source.reshape(-1,self.CB_source[0].size), metric=self.sim_function_source)))
+            self.source_sim_matrix = torch.tensor(squareform(pdist(self.prep_source_for_dist(self.CB_source), metric=self.sim_function_source)))
             self.source_sim_matrix = self.source_sim_matrix.diagonal_scatter(self.source_sim_reflexive(self.CB_source))
         if force_recompute or self.outcome_sim_matrix is None:
-            self.outcome_sim_matrix = torch.tensor(squareform(pdist(self.CB_outcome.reshape(-1,self.CB_outcome[0].size), metric=self.sim_function_outcome)))
+            self.outcome_sim_matrix = torch.tensor(squareform(pdist(self.prep_outcome_for_dist(self.CB_outcome), metric=self.sim_function_outcome)))
             self.outcome_sim_matrix = self.outcome_sim_matrix.diagonal_scatter(self.outcome_sim_reflexive(self.CB_outcome))
 
     def compute_inversion_cube(self, force_recompute: bool=False) -> None:
@@ -124,8 +134,8 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
         If `sources` is a single value, the result is of shape `[|CB|]`.
         """
         sim_vect = torch.tensor(cdist(
-            np.array(sources).reshape(-1,self.CB_source[0].size),
-            np.array(self.CB_source).reshape(-1,self.CB_source[0].size),
+            self.prep_source_for_dist(sources),
+            self.prep_source_for_dist(self.CB_source),
             metric=self.sim_function_source))
         
         return sim_vect
@@ -150,8 +160,8 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
         If `outcomes` is a single value, the result is of shape `[|CB|]`.
         """
         sim_vect = torch.tensor(cdist(
-            np.array(outcomes).reshape(-1,self.CB_outcome[0].size),
-            np.array(self.CB_outcome).reshape(-1,self.CB_outcome[0].size),
+            self.prep_outcome_for_dist(outcomes),
+            self.prep_outcome_for_dist(self.CB_outcome),
             metric=self.sim_function_outcome))
         
         return sim_vect

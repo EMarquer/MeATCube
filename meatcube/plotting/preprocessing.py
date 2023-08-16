@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 
-def prepare_ax(cb: MeATCubeCB, X=None, ax: plt.Axes=None, transform=None):
+def prepare_ax(cb: MeATCubeCB, X=None, ax: plt.Axes=None, transform=None, force_lims=True):
     """Draws the influence map of one case on all test cases."""
 
     if X is None:
@@ -32,7 +32,8 @@ def prepare_ax(cb: MeATCubeCB, X=None, ax: plt.Axes=None, transform=None):
         ax.set_xlim(x_min, x_max)
         ax.set_ylim(y_min, y_max)
     else:
-        (x_min, x_max) = ax.get_xlim()
-        (y_min, y_max) = ax.get_ylim()
+        if force_lims:
+            ax.set_xlim(x_min, x_max)
+            ax.set_ylim(y_min, y_max)
     
     return ax, transform

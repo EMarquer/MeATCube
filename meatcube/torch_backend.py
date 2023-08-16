@@ -36,25 +36,50 @@ def append_symmetric(symmetric_matrix: torch.Tensor, vect: torch.Tensor, cell: t
 # def torch_cdist():
 #     pass
 
-# def pairwise_dist(data: Union[np.ndarray, pd.DataFrame, pd.Series, torch.Tensor], metric):
-#     """A wrapper for scipy.spatial.distance.pdist, which handles a torch-based version and an object version."""
-#     if isinstance(data, (np.ndarray, pd.DataFrame, pd.Series)) 
-#         if (data.dtype != object):
-#             return pdist(data, metric=metric)
-#         else:
-#             n = X.shape[0]
-#             out_size = (n * (n - 1)) // 2
-#             dm = _prepare_out_argument(out, np.double, (out_size,))
-#             k = 0
-#             for i in range(X.shape[0] - 1):
-#                 for j in range(i + 1, X.shape[0]):
-#                     dm[k] = metric(X[i], X[j], **kwargs)
-#                     k += 1
-#             return dm
-#     elif isinstance(data, torch.Tensor):
-#         pass
-#     else:
-#     pass
+def pairwise_dist(
+        data: Union[np.ndarray, pd.DataFrame, pd.Series, torch.Tensor],
+        metric,
+        **metric_kwargs):
+    """A wrapper for scipy.spatial.distance.pdist, which handles a torch-based version and an object version."""
+    if isinstance(data, (np.ndarray, pd.DataFrame, pd.Series)):
+        if (data.dtype != object):
+            return pdist(data.reshape(-1,data[0].size), metric=metric)
+        else:
+            n = data.shape[0]
+            out_size = (n * (n - 1)) // 2
+            dm = np.ndarray(dtype=np.double, shape=(out_size,))
+            k = 0
+            for i in range(data.shape[0] - 1):
+                for j in range(i + 1, data.shape[0]):
+                    dm[k] = metric(data[i], data[j], **metric_kwargs)
+                    k += 1
+            return dm
+    elif isinstance(data, torch.Tensor):
+        raise NotImplementedError
+    else:
+        raise ValueError
+def cart_dist(a: Union[np.ndarray, pd.DataFrame, pd.Series, torch.Tensor],
+              b: Union[np.ndarray, pd.DataFrame, pd.Series, torch.Tensor],
+              metric, **metric_kwargs):
+    """A wrapper for scipy.spatial.distance.cdist, which handles a torch-based version and an object version."""
+    if isinstance(a, (np.ndarray, pd.DataFrame, pd.Series)) and isinstance(b, (np.ndarray, pd.DataFrame, pd.Series)):
+        if (a.dtype != object) and (b.dtype != object):
+            return cdist(
+                a.reshape(-1, a[0].size),
+                b.reshape(-1, a[0].size),
+                metric=metric)
+        else:
+            n = a.shape[0]
+            m = b.shape[0]
+            dm = np.ndarray(dtype=np.double, shape=(n, m))
+            for i in range(n - 1):
+                for j in range(m - 1):
+                    dm[i,j] = metric(a[i], b[j], **metric_kwargs)
+            return dm
+    elif isinstance(a, torch.Tensor):
+        raise NotImplementedError
+    else:
+        raise ValueError
 # def pairwise_dist(
 #         data1: Union[np.ndarray, pd.DataFrame, pd.Series, torch.Tensor],
 #         data2: Union[np.ndarray, pd.DataFrame, pd.Series, torch.Tensor],
