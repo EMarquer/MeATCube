@@ -40,7 +40,9 @@ def plot_cb(cb: MeATCubeCB, ax: plt.Axes=None, transform=None, outcome_colors=No
 def plot_ref(cb: MeATCubeCB, X, y, y_pred=None, ax: plt.Axes=None, transform=None, outcome_colors=None, alpha=1):
     """Plots the reference cases as scattered points.
     
-    :param y_pred: if not None, will change the shape of the dots to a triangle (pred=gold) or a cross (pred!=gold)
+    :param y_pred: 
+        if True or an array of predictions is given, will change the shape of the dots to a triangle (pred=gold) or a cross (pred!=gold)cb
+        if True, will do the prediction internally
     """
 
     # Get transformed data and setup a transform if necessary
@@ -53,6 +55,9 @@ def plot_ref(cb: MeATCubeCB, X, y, y_pred=None, ax: plt.Axes=None, transform=Non
         ax = plt.gca()
 
     # the actual plotting part
+    if y_pred is True:
+        y_pred = cb.predict(X)
+        
     if y_pred is None:
         path_col = ax.scatter(X_transformed[:,0], X_transformed[:,1], c=to_c_ref(cb, y), alpha=alpha)
     else:
