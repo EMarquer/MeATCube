@@ -334,7 +334,8 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
                    strategy: Literal["MCE", "hinge"]="hinge",
                    margin: float=0.1,
                    aggregation: Literal[None, "none", "sum", "mean"]="mean",
-                   normalize=NORMALIZE) -> torch.Tensor:
+                   normalize=NORMALIZE,
+                   batch_size=0) -> torch.Tensor:
         """Contribution of each case in the CB to the global competence.
         
         Short-hand for `self.competence(..., index=list(range(len(self.CB_source))))`."""
@@ -344,14 +345,16 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
                                strategy=strategy,
                                margin=margin,
                                aggregation=aggregation,
-                               normalize=normalize)
+                               normalize=normalize,
+                               batch_size=batch_size)
     def case_competences(self,
                    test_cases_sources: Iterable[SourceSpaceElement],
                    test_cases_outcomes: Iterable[OutcomeSpaceElement],
                    strategy: Literal["MCE", "hinge"]="hinge",
                    margin: float=0.1,
                    aggregation: Literal[None, "none", "sum", "mean"]="mean",
-                   normalize=NORMALIZE) -> torch.Tensor:
+                   normalize=NORMALIZE,
+                   batch_size=0) -> torch.Tensor:
         """Alias for self.influence.
         
         Short-hand for `self.competence(..., index=list(range(len(self.CB_source))))`."""
@@ -360,7 +363,8 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
                                strategy=strategy,
                                margin=margin,
                                aggregation=aggregation,
-                               normalize=normalize)
+                               normalize=normalize,
+                               batch_size=batch_size)
     
     def competence(self,
                    test_cases_sources: Iterable[SourceSpaceElement],
@@ -369,12 +373,13 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
                    strategy: Literal["MCE", "hinge"]="hinge",
                    margin: float=0.1,
                    aggregation: Literal[None, "none", "sum", "mean"]="mean",
-                   normalize=NORMALIZE) -> torch.Tensor:
+                   normalize=NORMALIZE,
+                   batch_size: int=0) -> torch.Tensor:
         """Compute the competence of the case base w.r.t a test set, or if an `index` is provided, the contribution of \
         the corresponding case to the competence.
 
         :param index: 
-            if provided, computes the contribution ()`Cᵢ(CB, ...)`) of the case at `index` (`CBᵢ`) to the competence,
+            if provided, computes the contribution (`Cᵢ(CB, ...)`) of the case at `index` (`CBᵢ`) to the competence,
             i.e., the difference of the competence with (`CB`) and without (`CB/CBᵢ`) the case:
             `Cᵢ(CB, ...) = C(CB, ...) - C(CB/CBᵢ, ...)`.
         :param strategy:
@@ -388,6 +393,11 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
             If `aggregation` = None or "none", returns `ℓ(CB, cₜ)` the competence with regard to each test case `cₜ`.
             If `aggregation` = "sum", returns the sum of `ℓ(CB, cₜ)` over all the test cases.
             If `aggregation` = "mean", returns the average of `ℓ(CB, cₜ)` over all the test cases.
+        :param batch_size:
+            If `index` is None, this parameter has no effect.
+            If `batch_size` <= 0, the contribution of all cases in `index` are computed at once (high memory impact).
+            If `batch_size` = 1, the contribution of each case in `index` is computed one after the other (low memory impact).
+            If `batch_size` > 1, the contribution of cases in `index` are computed by batches of `batch_size` indices.
         :return:
             If `aggregation` = None or "none", Size: [|S|] if index is None or int, [|index|, |S|] otherwise
             If `aggregation` = "sum" or "mean", Size: [] if index is None or int, [|index|] otherwise
@@ -425,31 +435,87 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
                 index = [index]
             else:
                 was_list = True
-            source_sim_matrix_i = torch.stack([
-                remove_index(self.source_sim_matrix, i, dims=[-1,-2])
-                for i in index
-            ], dim=0)
-            outcome_sim_matrix_i = torch.stack([
-                remove_index(self.outcome_sim_matrix, i, dims=[-1,-2])
-                for i in index
-            ], dim=0)
-            source_sim_vectors_i = torch.stack([
-                remove_index(source_sim_vectors, i, dims=[-1])
-                for i in index
-            ], dim=0)
-            outcome_sim_vectors_i = torch.stack([
-                remove_index(self.outcome_sim_vectors, i, dims=[-1])
-                for i in index
-            ], dim=0)
-            # inversion_rates_i: [|index|, |S|, |R|]
-            inversion_rates_i = MeATCubeEnergyComputations._gamma_i(
-                source_sim_matrix_i.unsqueeze(1).unsqueeze(1), # [|index|, 1, 1, |CB|-1, |CB|-1]
-                outcome_sim_matrix_i.unsqueeze(1).unsqueeze(1), # [|index|, 1, 1, |CB|-1, |CB|-1]
-                source_sim_vectors_i.unsqueeze(2), # [|index|, |S|, 1, |CB|-1]
-                outcome_sim_vectors_i.unsqueeze(1), # [|index|, 1, |R|, |CB|-1]
-                reflexive_sim_source=reflexive_sim_source.unsqueeze(0),
-                reflexive_sim_outcome=reflexive_sim_outcome.unsqueeze(0),
-                normalize=normalize)
+
+            # --------- All the cases at once ---------
+            if batch_size <= 0:
+                source_sim_matrix_i = torch.stack([
+                    remove_index(self.source_sim_matrix, i, dims=[-1,-2])
+                    for i in index
+                ], dim=0)
+                outcome_sim_matrix_i = torch.stack([
+                    remove_index(self.outcome_sim_matrix, i, dims=[-1,-2])
+                    for i in index
+                ], dim=0)
+                source_sim_vectors_i = torch.stack([
+                    remove_index(source_sim_vectors, i, dims=[-1])
+                    for i in index
+                ], dim=0)
+                outcome_sim_vectors_i = torch.stack([
+                    remove_index(self.outcome_sim_vectors, i, dims=[-1])
+                    for i in index
+                ], dim=0)
+                # inversion_rates_i: [|index|, |S|, |R|]
+                inversion_rates_i = MeATCubeEnergyComputations._gamma_i(
+                    source_sim_matrix_i.unsqueeze(1).unsqueeze(1), # [|index|, 1, 1, |CB|-1, |CB|-1]
+                    outcome_sim_matrix_i.unsqueeze(1).unsqueeze(1), # [|index|, 1, 1, |CB|-1, |CB|-1]
+                    source_sim_vectors_i.unsqueeze(2), # [|index|, |S|, 1, |CB|-1]
+                    outcome_sim_vectors_i.unsqueeze(1), # [|index|, 1, |R|, |CB|-1]
+                    reflexive_sim_source=reflexive_sim_source.unsqueeze(0),
+                    reflexive_sim_outcome=reflexive_sim_outcome.unsqueeze(0),
+                    normalize=normalize)
+            # --------- Batches of cases ---------
+            elif batch_size > 1:
+                inversion_rates_i = []
+                import tqdm
+                index_batches = [index[i:i+batch_size] for i in range(0, len(index), batch_size)]
+                for index_batch in tqdm.tqdm(index_batches):
+                #for index_batch in index_batches:
+                    source_sim_matrix_i = torch.stack([
+                        remove_index(self.source_sim_matrix, i, dims=[-1,-2])
+                        for i in index_batch
+                    ], dim=0)
+                    outcome_sim_matrix_i = torch.stack([
+                        remove_index(self.outcome_sim_matrix, i, dims=[-1,-2])
+                        for i in index_batch
+                    ], dim=0)
+                    source_sim_vectors_i = torch.stack([
+                        remove_index(source_sim_vectors, i, dims=[-1])
+                        for i in index_batch
+                    ], dim=0)
+                    outcome_sim_vectors_i = torch.stack([
+                        remove_index(self.outcome_sim_vectors, i, dims=[-1])
+                        for i in index_batch
+                    ], dim=0)
+                    # inversion_rates_i: [|index_batch|, |S|, |R|]
+                    inversion_rates_i.append(MeATCubeEnergyComputations._gamma_i(
+                        source_sim_matrix_i.unsqueeze(1).unsqueeze(1), # [|index_batch|, 1, 1, |CB|-1, |CB|-1]
+                        outcome_sim_matrix_i.unsqueeze(1).unsqueeze(1), # [|index_batch|, 1, 1, |CB|-1, |CB|-1]
+                        source_sim_vectors_i.unsqueeze(2), # [|index_batch|, |S|, 1, |CB|-1]
+                        outcome_sim_vectors_i.unsqueeze(1), # [|index_batch|, 1, |R|, |CB|-1]
+                        reflexive_sim_source=reflexive_sim_source.unsqueeze(0),
+                        reflexive_sim_outcome=reflexive_sim_outcome.unsqueeze(0),
+                        normalize=normalize))
+                inversion_rates_i = torch.cat(inversion_rates_i, dim=0)
+            # --------- Case by case ---------
+            else:
+                inversion_rates_i = []
+                import tqdm
+                for i in tqdm.tqdm(index):
+                #for i in index:
+                    source_sim_matrix_i = remove_index(self.source_sim_matrix, i, dims=[-1,-2])
+                    outcome_sim_matrix_i = remove_index(self.outcome_sim_matrix, i, dims=[-1,-2])
+                    source_sim_vectors_i = remove_index(source_sim_vectors, i, dims=[-1])
+                    outcome_sim_vectors_i = remove_index(self.outcome_sim_vectors, i, dims=[-1])
+                    # inversion_rates_i: [|S|, |R|]
+                    inversion_rates_i.append(MeATCubeEnergyComputations._gamma_i(
+                        source_sim_matrix_i.unsqueeze(0).unsqueeze(0), # [1, 1, |CB|-1, |CB|-1]
+                        outcome_sim_matrix_i.unsqueeze(0).unsqueeze(0), # [1, 1, |CB|-1, |CB|-1]
+                        source_sim_vectors_i.unsqueeze(1), # [|S|, 1, |CB|-1]
+                        outcome_sim_vectors_i.unsqueeze(0), # [1, |R|, |CB|-1]
+                        reflexive_sim_source=reflexive_sim_source,
+                        reflexive_sim_outcome=reflexive_sim_outcome,
+                        normalize=normalize))
+                inversion_rates_i = torch.stack(inversion_rates_i, dim=0)
         
         # compare the true outcome with the other outcomes
         true_outcome_index = self.outcome_index(test_cases_outcomes)

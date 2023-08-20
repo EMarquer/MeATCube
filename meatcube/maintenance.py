@@ -110,7 +110,8 @@ def decrement(cb: MeATCubeCB,
                 normalize=NORMALIZE,
                 aggregation: Literal["sum", "mean"]="mean",
                 k=1,
-                return_all=True) -> Union[MeATCubeCB, Tuple[MeATCubeCB, torch.Tensor, Union[int, List[int]]]]:
+                return_all=True,
+                batch_size=0) -> Union[MeATCubeCB, Tuple[MeATCubeCB, torch.Tensor, Union[int, List[int]]]]:
     """Compute the competence of the CB w.r.t the test set, then remove the `k` cases participating the least to 
     the competence.
     
@@ -123,7 +124,8 @@ def decrement(cb: MeATCubeCB,
         strategy=strategy,
         margin=margin,
         aggregation=None,
-        normalize=normalize)
+        normalize=normalize,
+        batch_size=batch_size)
     # aggregate the results
     if aggregation == "sum":
         competences = competences.sum(dim = -1, dtype=float)
@@ -184,6 +186,7 @@ def decrement_early_stopping(cb: MeATCubeCB,
                     ]="F1",
                 min_delta: float=0.,
                 patience: int=3,
+                batch_size=0,
                 verbose=False,
                 tqdm=False):
     """Iterative decremental process that stops using an early stopping heuristic.
@@ -235,7 +238,8 @@ def decrement_early_stopping(cb: MeATCubeCB,
                 normalize=normalize,
                 aggregation=aggregation,
                 k=step_size,
-                return_all=True) 
+                return_all=True,
+                batch_size=batch_size) 
 
         if step_size > 1:
             removed.extend(cases[idx] for idx in result_index)
@@ -263,7 +267,6 @@ def decrement_early_stopping(cb: MeATCubeCB,
             best_record=record
         elif step_id - best_perf_step >= patience:
             break
-        input("continue?")
 
     if return_all:
         return records[best_perf_step]["cb"], records, records[best_perf_step]
