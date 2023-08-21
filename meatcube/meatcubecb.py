@@ -393,6 +393,7 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
             If `aggregation` = None or "none", returns `ℓ(CB, cₜ)` the competence with regard to each test case `cₜ`.
             If `aggregation` = "sum", returns the sum of `ℓ(CB, cₜ)` over all the test cases.
             If `aggregation` = "mean", returns the average of `ℓ(CB, cₜ)` over all the test cases.
+        :param normalize: (Deprecated) If True, will normalize the competence by the cube of the CB size.
         :param batch_size:
             If `index` is None, this parameter has no effect.
             If `batch_size` <= 0, the contribution of all cases in `index` are computed at once (high memory impact).
