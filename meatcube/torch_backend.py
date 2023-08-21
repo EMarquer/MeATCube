@@ -258,6 +258,7 @@ class MeATCubeEnergyComputations(object):
         Size: `[...]` or constant value.
         :param reflexive_sim_outcome: Reflexive outcome similarity `σr(i,i)`.
         Size: `[...]` or constant value.
+        :param normalize: (Deprecated) If True, will normalize the competence by the cube of the CB size.
 
         :return: The competence of `CB` w.r.t the case `i`.
         """
@@ -325,6 +326,7 @@ class MeATCubeEnergyComputations(object):
 
         :param cube: Inversion cube. 
         Size: `[..., M, M, M]`.
+        :param normalize: (Deprecated) If True, will normalize the competence by the cube of the CB size.
 
         :return: The competence of `CB` w.r.t the case `i`.
         """
@@ -343,6 +345,3 @@ class MeATCubeEnergyComputations(object):
         else:
             return inversions
         
-#         , type=int
-# , type=int
-# , type=int
