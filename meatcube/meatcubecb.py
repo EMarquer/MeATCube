@@ -40,7 +40,8 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
                  CB_source: Iterable[SourceSpaceElement], CB_outcome: Iterable[OutcomeSpaceElement],
                  potential_outcomes: List[OutcomeSpaceElement],
                  sim_function_source: Callable[[SourceSpaceElement, SourceSpaceElement], NumberOrBool],
-                 sim_function_outcome: Callable[[OutcomeSpaceElement, OutcomeSpaceElement], NumberOrBool]):
+                 sim_function_outcome: Callable[[OutcomeSpaceElement, OutcomeSpaceElement], NumberOrBool],
+                 device = torch.device("cpu")):
         self.CB_source = numpy_source_or_outcome(CB_source)
         self.CB_outcome = numpy_source_or_outcome(CB_outcome)
         self.potential_outcomes = potential_outcomes
@@ -50,8 +51,31 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
         self.outcome_sim_matrix = None # [|CB|, |CB|]
         self.outcome_sim_vectors = None # [|R|, |CB|], one vector per possible outcome
         self.cube = None # [|CB|, |CB|, |CB|]
+        self.device = device
         super(Sequence).__init__()
 
+    def to(self, device) -> MeATCubeCB:
+        updated_meatcube = MeATCubeCB(
+            CB_source=self.CB_source,
+            CB_outcome=self.CB_outcome,
+            potential_outcomes=self.potential_outcomes,
+            sim_function_source=self.sim_function_source,
+            sim_function_outcome=self.sim_function_outcome,
+            device=device)
+
+        # Copy the similarity matrices without the row at index nor the row at index (if already initialized)
+        if self.source_sim_matrix is not None:
+            updated_meatcube.source_sim_matrix = self.source_sim_matrix.to(updated_meatcube.device)
+        if self.outcome_sim_matrix is not None:
+            updated_meatcube.outcome_sim_matrix = self.outcome_sim_matrix.to(updated_meatcube.device)
+        if self.cube is not None:
+            updated_meatcube.cube = self.cube.to(updated_meatcube.device)
+        if self.cube is not None:
+            updated_meatcube.cube = self.cube.to(updated_meatcube.device)
+        if self.outcome_sim_vectors is not None:
+            updated_meatcube.outcome_sim_vectors = self.outcome_sim_vectors.to(updated_meatcube.device)
+        return updated_meatcube
+    
     def __len__(self):
         return self.CB_source.shape[0]
 
@@ -64,6 +88,7 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
             potential = self.prep_outcome_for_dist(self.potential_outcomes)
             self.outcome_sim_vectors = torch.tensor(cdist(
                 potential, self.prep_outcome_for_dist(self.CB_outcome), metric=self.sim_function_outcome))
+            self.outcome_sim_vectors = self.outcome_sim_vectors.to(self.device)
 
     def is_source_list(self, value: Union[SourceSpaceElement, Iterable[SourceSpaceElement]]) -> bool:
         if isinstance(value, torch.Tensor):
@@ -102,21 +127,23 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
         if isinstance(self.potential_outcomes, np.ndarray):
             index = lambda x: np.where(self.potential_outcomes==x)[0][0]
             if self.is_outcome_list(outcome):
-                return torch.tensor([index(o) for o in outcome])
-            return torch.tensor(index(outcome))
+                return torch.tensor([index(o) for o in outcome]).to(self.device)
+            return torch.tensor(index(outcome)).to(self.device)
         else:
             if self.is_outcome_list(outcome):
-                return torch.tensor([self.potential_outcomes.index(o) for o in outcome])
-            return torch.tensor(self.potential_outcomes.index(outcome))
+                return torch.tensor([self.potential_outcomes.index(o) for o in outcome]).to(self.device)
+            return torch.tensor(self.potential_outcomes.index(outcome)).to(self.device)
 
     def compute_sim_matrix(self, force_recompute: bool=False) -> None:
         """Computes the similarity matrices."""
         if force_recompute or self.source_sim_matrix is None:
             self.source_sim_matrix = torch.tensor(squareform(pdist(self.prep_source_for_dist(self.CB_source), metric=self.sim_function_source)))
             self.source_sim_matrix = self.source_sim_matrix.diagonal_scatter(self.source_sim_reflexive(self.CB_source))
+            self.source_sim_matrix = self.source_sim_matrix.to(self.device)
         if force_recompute or self.outcome_sim_matrix is None:
             self.outcome_sim_matrix = torch.tensor(squareform(pdist(self.prep_outcome_for_dist(self.CB_outcome), metric=self.sim_function_outcome)))
             self.outcome_sim_matrix = self.outcome_sim_matrix.diagonal_scatter(self.outcome_sim_reflexive(self.CB_outcome))
+            self.outcome_sim_matrix = self.outcome_sim_matrix.to(self.device)
 
     def compute_inversion_cube(self, force_recompute: bool=False) -> None:
         """Computes the inversion cube."""
@@ -138,7 +165,7 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
             self.prep_source_for_dist(self.CB_source),
             metric=self.sim_function_source))
         
-        return sim_vect
+        return sim_vect.to(self.device)
     def source_sim_reflexive(self, sources: Union[SourceSpaceElement, Iterable[SourceSpaceElement]]) -> torch.Tensor:
         """Computes the similarity between the source and itself.
         
@@ -151,7 +178,7 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
         else:
             sim_reflexive = torch.tensor(self.sim_function_source(sources, sources))
         
-        return sim_reflexive
+        return sim_reflexive.to(self.device)
     
     def outcome_sim_vect(self, outcomes: Union[OutcomeSpaceElement, Iterable[OutcomeSpaceElement]]) -> torch.Tensor:
         """Computes the similarity between the outcome and the CB in the outcome space.
@@ -164,7 +191,7 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
             self.prep_outcome_for_dist(self.CB_outcome),
             metric=self.sim_function_outcome))
         
-        return sim_vect
+        return sim_vect.to(self.device)
     def outcome_sim_reflexive(self, outcomes: Union[OutcomeSpaceElement, Iterable[OutcomeSpaceElement]]) -> torch.Tensor:
         """Computes the similarity between the source and itself.
         
@@ -176,18 +203,23 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
         else:
             sim_reflexive = torch.tensor(self.sim_function_outcome(outcomes, outcomes))
         
-        return sim_reflexive
+        return sim_reflexive.to(self.device)
     
     def remove(self, index: int) -> MeATCubeCB:
         """Returns a copy of this MeATCubeCB object where case `index` has been removed.
         
         If initialized, will copy and update the similarity matrices and the cube."""
+        if isinstance(index, torch.Tensor):
+            index_cpu=index.cpu()
+        else:
+            index_cpu=index
         updated_meatcube = MeATCubeCB(
-            CB_source=np.delete(self.CB_source, index, axis=0),
-            CB_outcome=np.delete(self.CB_outcome, index, axis=0),
+            CB_source=np.delete(self.CB_source, index_cpu, axis=0),
+            CB_outcome=np.delete(self.CB_outcome, index_cpu, axis=0),
             potential_outcomes=self.potential_outcomes,
             sim_function_source=self.sim_function_source,
-            sim_function_outcome=self.sim_function_outcome)
+            sim_function_outcome=self.sim_function_outcome,
+            device=self.device)
 
         # Copy the similarity matrices without the row at index nor the row at index (if already initialized)
         if self.source_sim_matrix is not None:
@@ -207,7 +239,8 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
             CB_outcome=np.append(self.CB_outcome, case_outcome),
             potential_outcomes=self.potential_outcomes,
             sim_function_source=self.sim_function_source,
-            sim_function_outcome=self.sim_function_outcome)
+            sim_function_outcome=self.sim_function_outcome,
+            device=self.device)
         # Extend the similarity matrix with the new similarity (if already initialized)
         if self.source_sim_matrix is not None:
             source_sim_vect = self.source_sim_vect(case_source)
@@ -321,7 +354,7 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
         if return_outcome_indices:
             pred_outcome = pred_outcome_index
         else:
-            pred_outcome = np.vectorize(self.potential_outcomes.__getitem__)(pred_outcome_index.numpy())
+            pred_outcome = np.vectorize(self.potential_outcomes.__getitem__)(pred_outcome_index.cpu().numpy())
         if return_logits:
             return pred_outcome, inversions
         else:
