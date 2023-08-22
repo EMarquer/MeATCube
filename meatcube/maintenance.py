@@ -111,7 +111,8 @@ def decrement(cb: MeATCubeCB,
                 aggregation: Literal["sum", "mean"]="mean",
                 k=1,
                 return_all=True,
-                batch_size=0) -> Union[MeATCubeCB, Tuple[MeATCubeCB, torch.Tensor, Union[int, List[int]]]]:
+                batch_size=0,
+                tqdm_args=dict()) -> Union[MeATCubeCB, Tuple[MeATCubeCB, torch.Tensor, Union[int, List[int]]]]:
     """Compute the competence of the CB w.r.t the test set, then remove the `k` cases participating the least to 
     the competence.
     
@@ -125,7 +126,8 @@ def decrement(cb: MeATCubeCB,
         margin=margin,
         aggregation=None,
         normalize=normalize,
-        batch_size=batch_size)
+        batch_size=batch_size,
+        tqdm_args=tqdm_args)
     # aggregate the results
     if aggregation == "sum":
         competences = competences.sum(dim = -1, dtype=float)
@@ -188,7 +190,7 @@ def decrement_early_stopping(cb: MeATCubeCB,
                 patience: int=3,
                 batch_size=0,
                 verbose=False,
-                tqdm=False):
+                tqdm_args=dict()):
     """Iterative decremental process that stops using an early stopping heuristic.
     
     :param monitor: performance measure to be monitored
@@ -229,7 +231,8 @@ def decrement_early_stopping(cb: MeATCubeCB,
     cases = list(range(len(cb)))
     removed = []
 
-    for step_id in range(1, len(cb)//step_size):
+    import tqdm
+    for step_id in tqdm.tqdm(range(1, len(cb)//step_size), position=0, desc="Compression step"):
         cb, competences, result_index = decrement(cb,
                 test_cases_sources,
                 test_cases_outcomes,
@@ -239,7 +242,8 @@ def decrement_early_stopping(cb: MeATCubeCB,
                 aggregation=aggregation,
                 k=step_size,
                 return_all=True,
-                batch_size=batch_size) 
+                batch_size=batch_size,
+                tqdm_args={"position": 1, "leave":False}) 
 
         if step_size > 1:
             removed.extend(cases[idx] for idx in result_index)

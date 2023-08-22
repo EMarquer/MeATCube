@@ -335,7 +335,8 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
                    margin: float=0.1,
                    aggregation: Literal[None, "none", "sum", "mean"]="mean",
                    normalize=NORMALIZE,
-                   batch_size=0) -> torch.Tensor:
+                   batch_size=0,
+                   tqdm_args: dict=dict()) -> torch.Tensor:
         """Contribution of each case in the CB to the global competence.
         
         Short-hand for `self.competence(..., index=list(range(len(self.CB_source))))`."""
@@ -346,7 +347,8 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
                                margin=margin,
                                aggregation=aggregation,
                                normalize=normalize,
-                               batch_size=batch_size)
+                               batch_size=batch_size,
+                               tqdm_args=tqdm_args)
     def case_competences(self,
                    test_cases_sources: Iterable[SourceSpaceElement],
                    test_cases_outcomes: Iterable[OutcomeSpaceElement],
@@ -354,7 +356,8 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
                    margin: float=0.1,
                    aggregation: Literal[None, "none", "sum", "mean"]="mean",
                    normalize=NORMALIZE,
-                   batch_size=0) -> torch.Tensor:
+                   batch_size=0,
+                   tqdm_args: dict=dict()) -> torch.Tensor:
         """Alias for self.influence.
         
         Short-hand for `self.competence(..., index=list(range(len(self.CB_source))))`."""
@@ -364,7 +367,8 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
                                margin=margin,
                                aggregation=aggregation,
                                normalize=normalize,
-                               batch_size=batch_size)
+                               batch_size=batch_size,
+                               tqdm_args=tqdm_args)
     
     def competence(self,
                    test_cases_sources: Iterable[SourceSpaceElement],
@@ -374,7 +378,8 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
                    margin: float=0.1,
                    aggregation: Literal[None, "none", "sum", "mean"]="mean",
                    normalize=NORMALIZE,
-                   batch_size: int=0) -> torch.Tensor:
+                   batch_size: int=0,
+                   tqdm_args: dict=dict()) -> torch.Tensor:
         """Compute the competence of the case base w.r.t a test set, or if an `index` is provided, the contribution of \
         the corresponding case to the competence.
 
@@ -469,7 +474,7 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
                 inversion_rates_i = []
                 import tqdm
                 index_batches = [index[i:i+batch_size] for i in range(0, len(index), batch_size)]
-                for index_batch in tqdm.tqdm(index_batches):
+                for index_batch in tqdm.tqdm(index_batches,  "Case batch (competence)", **tqdm_args):
                 #for index_batch in index_batches:
                     source_sim_matrix_i = torch.stack([
                         remove_index(self.source_sim_matrix, i, dims=[-1,-2])
@@ -501,7 +506,7 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
             else:
                 inversion_rates_i = []
                 import tqdm
-                for i in tqdm.tqdm(index):
+                for i in tqdm.tqdm(index, "Case (competence)", **tqdm_args):
                 #for i in index:
                     source_sim_matrix_i = remove_index(self.source_sim_matrix, i, dims=[-1,-2])
                     outcome_sim_matrix_i = remove_index(self.outcome_sim_matrix, i, dims=[-1,-2])
