@@ -8,7 +8,7 @@ from typing import List
 To create all the preprocessing files:
 echo datasets/*/ | tr + _ | tr ' ' '\n' | sed -r 's/datasets\/(.+?)\//preprocess\/\1.py/g' | xargs touch
 """
-
+DATASETS = ["balance+scale", "breast+cancer+wisconsin+diagnostic", "breast+cancer+wisconsin+prognostic", "credit+approval", "dermatology", "glass+identification", "haberman+s+survival", "heart+disease", "hepatitis", "ionosphere", "iris", "kaggle+pima+indian+diabetes", "kaggle+teaching+assistant+evaluation", "lenses", "liver+disorders", "lung+cancer", "post+operative+patient", "wine", "zoo"]
 THIS_FOLDER = os.path.dirname(__file__)
 def auto_dataset_name_from_preprocess_file(_file_):
     dataset_name = os.path.basename(_file_)

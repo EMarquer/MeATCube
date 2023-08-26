@@ -8,6 +8,7 @@ The weights are decided ???
 """
 from typing import Any, List
 import numpy as np
+from sklearn.neighbors import NeighborhoodComponentsAnalysis
 
 class MultivaluedSimilarity():
     def __init__(self, numeric_attributes: List[int], symbolic_attributes: List[int]) -> None:
@@ -35,14 +36,21 @@ class MultivaluedSimilarity():
     def compute_without_aggregation(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
         """Similarity between x and y, each containing a single record."""
         return [self.att_sims[att](x[att], y[att]) for att in self.attributes]
-            
-    @classmethod
-    def matching(x, y):
-        return (1 if (x == y) else 0)
     
-    @classmethod
-    def norm_error(x, y, min_, max_):
-        return (1 if (x == y) else 0)
+    def fit(self, X: np.ndarray=None, y: np.ndarray=None, max_iter=100, random_state=42):
+        """
+        Finds ideal weights with NeighborhoodComponentsAnalysis
+
+        :param X: data
+        :param y: labels
+        """
+        nca = NeighborhoodComponentsAnalysis(n_components=1, random_state=random_state, max_iter=max_iter)
+        nca.fit(X, y)
+
+        #diag_values, diag_matrix = np.linalg.eig(nca.components_)
+        #self.sim.att_weights = diag_values.tolist()
+        self.att_weights = nca.components_[0].tolist()
+        return nca.components_
 
 class NumericSimilarity():
     def __init__(self) -> None:

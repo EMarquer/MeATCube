@@ -1,0 +1,26 @@
+dataset,verbose name,initial knn accuracy,data recovered,deletion rate ICF,accuracy ICF,deletion rate RC,accuracy RC,deletion rate CBE,accuracy CBE
+balance+scale,Balance,0.8512,True,,,,,,
+breast+cancer+wisconsin+diagnostic,Breast Cancer Diagnostic,0.9690,True,,,,,,
+breast+cancer+wisconsin+prognostic,Breast Cancer Pronostic,0.7158,True,,,,,,
+credit+approval,Credit Approval,0.8692,True,0.8402,0.83380,0.8784,0.8638,0.5590,0.8362
+dermatology,Dermatology,0.9775,True,,,,,,
+glass+identification,Glass Identification,0.6905,True,,,,,,
+haberman+s+survival,Haberman's Survival,0.6951,True,,,,,,
+heart+disease,Heart Disease Cleveland,0.5322,True,,,,,,
+hepatitis,Hepatitis,0.8063,True,,,,,,
+ionosphere,Ionosphere,0.8671,True,,,,,,
+iris,Iris,0.9700,True,,,,,,
+kaggle+pima+indian+diabetes,Pima indians Diabetes,0.7078,True,,,,,,
+kaggle+teaching+assistant+evaluation,Teatching Assistant Evaluation,0.5533,True,,,,,,
+lenses,Lenses,0.7250,True,0.4438,0.5250,0.8625,0.5500,0.6813,0.6500
+liver+disorders,Liver Disorders,0.6420,True,,,,,,
+lung+cancer,Lung Cancer,0.4800,True,,,,,,
+post+operative+patient,Post-Operative Patient,0.6471,True,,,,,,
+wine,Wine,0.9667,True,,,,,,
+zoo,Zoo,0.9150,True,,,,,,
+,Breathalyser,0.7160,False,0.7753,0.7400,0.8766,0.6680,0.6195,0.7120
+,Spam1,0.9335,False,,,,,,
+,Spam2,0.9430,False,,,,,,
+,Spam3,0.9825,False,,,,,,
+,Spam4,0.9705,False,,,,,,
+,Spam5,0.9480,False,,,,,,

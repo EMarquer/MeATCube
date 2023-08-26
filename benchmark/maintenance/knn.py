@@ -9,7 +9,6 @@ except ImportError as e:
 from collections import Counter
 import numpy as np
 import torch
-from sklearn.neighbors import NeighborhoodComponentsAnalysis
 
 
 class KNN():
@@ -39,7 +38,7 @@ class KNN():
         ranks = sims.argsort().argsort()
         for rank, sim, outcome in zip(ranks, sims, self.CB_outcome):
             if (
-                (k > 0 and (rank > len(ranks) - k)) or # consider only the top k most similar cases' outcome
+                (k > 0 and (rank >= ranks.max() - k)) or # consider only the top k most similar cases' outcome
                 (k <= 0) # consider all cases' outcome
             ):
                 counter[outcome] += sim # similarity = weight of vote
@@ -66,13 +65,7 @@ class KNN():
             CB_source = self.CB_source
             CB_outcome = self.CB_outcome
 
-        nca = NeighborhoodComponentsAnalysis(n_components=1, random_state=random_state, max_iter=max_iter)
-        nca.fit(CB_source, CB_outcome)
-
-        #diag_values, diag_matrix = np.linalg.eig(nca.components_)
-        #self.sim.att_weights = diag_values.tolist()
-        self.sim.att_weights = nca.components_[0].tolist()
-        return nca.components_
+        return self.sim.fit(CB_source, CB_outcome, max_iter=max_iter, random_state=random_state)
 
     def fit_weights(self, dev_source: np.ndarray, dev_outcomes: np.ndarray, max_steps=2000, lr=1e-3, gamma=0.99):
         """
@@ -113,9 +106,6 @@ class KNN():
 
         best_loss = None
         best_weights = weights_/weights_.abs().sum()
-        print()
-        print(weights_.abs().sum())
-        print()
         from tqdm import tqdm
         iter = tqdm(list(range(max_steps)), desc="Step")
         #for step in range(max_steps):
@@ -143,12 +133,12 @@ class KNN():
             iter.set_postfix_str(f"Loss: {loss.item()}")
 
         weights_ = best_weights
-        print("final weights:")
-        print(weights_)
 
         self.sim.att_weights = weights_.detach().view(-1).numpy().tolist()
 
-def accuracy(knn: KNN, X_test, y_test):
-    pred = knn.classify(X_test.to_numpy())
-    acc = (y_test.to_numpy() == np.array(pred)).astype(float).mean()
+def accuracy(knn: KNN, X_test, y_test, k=-1):
+    if not isinstance(X_test, np.ndarray): X_test = X_test.to_numpy()
+    if not isinstance(y_test, np.ndarray): y_test = y_test.to_numpy()
+    pred = knn.classify(X_test, k=k)
+    acc = (y_test == np.array(pred)).astype(float).mean()
     return acc
