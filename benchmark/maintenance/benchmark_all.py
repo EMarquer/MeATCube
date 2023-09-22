@@ -22,6 +22,12 @@ RESULT_FOLDER = os.path.join(THIS_FOLDER, "results")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 RECOMPUTE = False
 
+# for the weight estimation experiment
+RESULT_FOLDER = os.path.join(THIS_FOLDER, "results-weight-estim")
+TUNE_SIMILARITY_FOR_MEATCUBE = True
+if TUNE_SIMILARITY_FOR_MEATCUBE:
+    RESULT_FOLDER = RESULT_FOLDER+"+"
+
 md_report = """
 # Benchmark report
 """
@@ -48,7 +54,8 @@ for dataset in dataset_utils.DATASETS:
 
         # setting up the similarity
         source_similarity = MultivaluedSimilarity(numeric_columns, symbolic_columns)
-        #source_similarity.fit(X, y)
+        if TUNE_SIMILARITY_FOR_MEATCUBE:
+            source_similarity.fit(X, y)
         outcome_similarity = SymbolicSimilarity()
 
         # create the CB
@@ -91,15 +98,15 @@ for dataset in dataset_utils.DATASETS:
     best_knn_record = sorted(records, key=lambda record: (record["weighted_nn_accuracy"], record["step"]), reverse=True)[0]
     best_1nn_record = sorted(records, key=lambda record: (record["1nn_accuracy"], record["step"]), reverse=True)[0]
     print(f"{dataset} dataset ---")
-    # print(f"\tInitial:         step { initial_record['step']:>4}\tMeATCube F1 { initial_record['F1']:>6.2%}, MeATCube acc { initial_record['accuracy']:>6.2%}, KNN acc { initial_record['weighted_nn_accuracy']:>6.2%}, 1-NN { initial_record['1nn_accuracy']:>6.2%}")
-    # print(f"\tAt best acc:     step {best_acc_record['step']:>4}\tMeATCube F1 {best_acc_record['F1']:>6.2%}, MeATCube acc {best_acc_record['accuracy']:>6.2%}, KNN acc {best_acc_record['weighted_nn_accuracy']:>6.2%}, 1-NN {best_acc_record['1nn_accuracy']:>6.2%}")
-    # print(f"\t\tDeletion rate: {1-(best_acc_record['cb_size']/initial_record['cb_size']):%} cases removed from the CB: {initial_record['cb_size']} -> {best_acc_record['cb_size']}")
-    # print(f"\tAt best F1:      step { best_f1_record['step']:>4}\tMeATCube F1 { best_f1_record['F1']:>6.2%}, MeATCube acc { best_f1_record['accuracy']:>6.2%}, KNN acc { best_f1_record['weighted_nn_accuracy']:>6.2%}, 1-NN { best_f1_record['1nn_accuracy']:>6.2%}")
-    # print(f"\t\tDeletion rate: {1-( best_f1_record['cb_size']/initial_record['cb_size']):%} cases removed from the CB: {initial_record['cb_size']} -> { best_f1_record['cb_size']}")
-    # print(f"\tAt best KNN acc: step {best_knn_record['step']:>4}\tMeATCube F1 {best_knn_record['F1']:>6.2%}, MeATCube acc {best_knn_record['accuracy']:>6.2%}, KNN acc {best_knn_record['weighted_nn_accuracy']:>6.2%}, 1-NN {best_knn_record['1nn_accuracy']:>6.2%}")
-    # print(f"\t\tDeletion rate: {1-(best_knn_record['cb_size']/initial_record['cb_size']):%} cases removed from the CB: {initial_record['cb_size']} -> {best_knn_record['cb_size']}")
-    # print(f"\tAt best 1NN acc: step {best_1nn_record['step']:>4}\tMeATCube F1 {best_1nn_record['F1']:>6.2%}, MeATCube acc {best_1nn_record['accuracy']:>6.2%}, KNN acc {best_knn_record['weighted_nn_accuracy']:>6.2%}, 1-NN {best_1nn_record['1nn_accuracy']:>6.2%}")
-    # print(f"\t\tDeletion rate: {1-(best_1nn_record['cb_size']/initial_record['cb_size']):%} cases removed from the CB: {initial_record['cb_size']} -> {best_1nn_record['cb_size']}")
+    print(f"\tInitial:         step { initial_record['step']:>4}\tMeATCube F1 { initial_record['F1']:>6.2%}, MeATCube acc { initial_record['accuracy']:>6.2%}, KNN acc { initial_record['weighted_nn_accuracy']:>6.2%}, 1-NN { initial_record['1nn_accuracy']:>6.2%}")
+    print(f"\tAt best acc:     step {best_acc_record['step']:>4}\tMeATCube F1 {best_acc_record['F1']:>6.2%}, MeATCube acc {best_acc_record['accuracy']:>6.2%}, KNN acc {best_acc_record['weighted_nn_accuracy']:>6.2%}, 1-NN {best_acc_record['1nn_accuracy']:>6.2%}")
+    print(f"\t\tDeletion rate: {1-(best_acc_record['cb_size']/initial_record['cb_size']):%} cases removed from the CB: {initial_record['cb_size']} -> {best_acc_record['cb_size']}")
+    print(f"\tAt best F1:      step { best_f1_record['step']:>4}\tMeATCube F1 { best_f1_record['F1']:>6.2%}, MeATCube acc { best_f1_record['accuracy']:>6.2%}, KNN acc { best_f1_record['weighted_nn_accuracy']:>6.2%}, 1-NN { best_f1_record['1nn_accuracy']:>6.2%}")
+    print(f"\t\tDeletion rate: {1-( best_f1_record['cb_size']/initial_record['cb_size']):%} cases removed from the CB: {initial_record['cb_size']} -> { best_f1_record['cb_size']}")
+    print(f"\tAt best KNN acc: step {best_knn_record['step']:>4}\tMeATCube F1 {best_knn_record['F1']:>6.2%}, MeATCube acc {best_knn_record['accuracy']:>6.2%}, KNN acc {best_knn_record['weighted_nn_accuracy']:>6.2%}, 1-NN {best_knn_record['1nn_accuracy']:>6.2%}")
+    print(f"\t\tDeletion rate: {1-(best_knn_record['cb_size']/initial_record['cb_size']):%} cases removed from the CB: {initial_record['cb_size']} -> {best_knn_record['cb_size']}")
+    print(f"\tAt best 1NN acc: step {best_1nn_record['step']:>4}\tMeATCube F1 {best_1nn_record['F1']:>6.2%}, MeATCube acc {best_1nn_record['accuracy']:>6.2%}, KNN acc {best_knn_record['weighted_nn_accuracy']:>6.2%}, 1-NN {best_1nn_record['1nn_accuracy']:>6.2%}")
+    print(f"\t\tDeletion rate: {1-(best_1nn_record['cb_size']/initial_record['cb_size']):%} cases removed from the CB: {initial_record['cb_size']} -> {best_1nn_record['cb_size']}")
 
     df = pd.DataFrame.from_records([initial_record, best_f1_record, best_acc_record, best_knn_record, best_1nn_record])
     df.index = [
@@ -123,22 +130,39 @@ for dataset in dataset_utils.DATASETS:
     stacked["accuracy"][stacked["accuracy"] < 0] = pd.NA
     stacked=stacked.dropna(axis=0)
     stacked["model"] = stacked["model"].replace({
-        'accuracy': "MeATCube", 'weighted_nn_accuracy': "k-NN", '1nn_accuracy': "1-nn"
+        'accuracy': "MeATCube", 'weighted_nn_accuracy': "k-NN w/ Karabulut", '1nn_accuracy': "1-nn w/ Karabulut"
     })
+
+    plt.rcParams['figure.constrained_layout.use'] = True
+    # baseline and plotting
+    x_gap = 0.01 * initial_record['cb_size']
+    y_gap = 0.01
     baseline_row = baseline_df[baseline_df["dataset"]==dataset]
     sns.relplot(stacked, x="step", y="accuracy", hue="model", style="model", kind="line")
     plt.axhline(y = baseline_row["initial knn accuracy"].item(), color = 'r', linestyle = '-', label = "baseline k-NN accuracy")
+    plt.annotate("Baseline k-NN acc.", (x_gap, baseline_row["initial knn accuracy"].item()+y_gap))
     for baseline_algo in ["ICF", "RC", "CBE"]:
         if not baseline_row[f"deletion rate {baseline_algo}"].isna().item():
             #print(baseline_row[f"deletion rate {baseline_algo}"].item(), initial_record["cb_size"], baseline_row[f"accuracy {baseline_algo}"].item())
             x__ = [float(baseline_row[f"deletion rate {baseline_algo}"].item()) * initial_record["cb_size"]]
             y__ = [float(baseline_row[f"accuracy {baseline_algo}"].item())]
-            plt.scatter(x__, y__)
-            plt.annotate(baseline_algo, (x__[0], y__[0]))
+            plt.scatter(x__, y__, color='r')
+            plt.annotate(baseline_algo, (x__[0]+x_gap, y__[0]-y_gap))
 
-    plt.ylim(0,1.05)
+    for i, (record, label, score) in enumerate([
+        (best_f1_record, "Best MeATCube F1", best_f1_record["F1"]),
+        (best_acc_record, "Best MeATCube acc.", best_acc_record["accuracy"]),
+        (best_knn_record, "Best k-NN acc.", best_knn_record["weighted_nn_accuracy"]),
+        (best_1nn_record, "Best 1-NN acc.", best_1nn_record["1nn_accuracy"]),
+        ]):
+        plt.axvline(x = record["step"], color = 'b', linestyle = ':', alpha=0.5)
+        plt.annotate(label + f": {score:.2%}", (record["step"]+x_gap, -(i * 0.04)))
+    plt.title("Model accuracy when compressing the CB\nusing MeATCube and hinge competence")
+
+    plt.ylim(-0.2,1.05)
     os.makedirs(os.path.dirname(result_fig_file), exist_ok=True)
-    plt.savefig(result_fig_file)
+    plt.savefig(result_fig_file,  bbox_inches='tight')
+    #plt.show()
     plt.clf()
 
 with open("REPORT.md", "w") as f:

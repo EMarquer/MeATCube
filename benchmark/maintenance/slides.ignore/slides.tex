@@ -1,0 +1,904 @@
+\documentclass[]{beamer}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{booktabs}
+\usepackage{relsize}
+\usepackage{graphicx}
+\usepackage{amssymb,amsmath,amsfonts}
+
+\addtobeamertemplate{navigation symbols}{}{%
+    \usebeamerfont{footline}%
+    \usebeamercolor[fg]{footline}%
+    \hspace{1em}%
+    \larger%
+    \insertframenumber/\inserttotalframenumber
+}
+
+\title{Maintenance benchmark on real world data}
+\author{Esteban Marquer}
+\date{22 septembre}
+
+\begin{document}
+
+\begin{frame}
+    \titlepage
+\end{frame}
+\section{Baseline}
+\begin{frame}{Goal}
+    \begin{enumerate}
+        \item Get a results on real data
+        \item Get a benchmark on real data for CB maintenance\\
+        $\rightarrow$ Reproduce the setting from:\\
+
+        ``Combining and Choosing Case Base Maintenance Algorithms''
+        Ph.D. thesis of Lisa Cummins, 2013
+    \end{enumerate}
+    
+
+\end{frame}
+\begin{frame}
+    \tableofcontents
+\end{frame}
+\begin{frame}{Baselines ~~{\smaller {\color{green!50!black}Green: maintenance baseline avail.}~~{\color{red} Red: not found}}}
+    \begin{center}
+        \includegraphics[width=.85\textwidth]{tab2_5_.png}
+    \end{center}
+    
+\end{frame}
+\begin{frame}{Baselines maintainance}
+    \begin{center}
+        \includegraphics[width=.9\textwidth]{tab2_7.png}
+    \end{center}
+    
+    \begin{itemize}
+        \item ICF:  Iterative Case Filtering [9]\\
+        {\smaller H. Brighton and C. Mellish. ``On the consistency of information filters for lazy learning algorithms'', 1999}
+        \item RC:  RC-CNN [58]\\
+        {\smaller E. McKenna and B. Smyth. ``Competence-guided case-base editing techniques'', 2000}
+        \item CBE (Case Base Editing) = BBNR (Blame-Based Noise Reduction) + CRR (Conservative Redundancy Reduction) [19]\\
+        {\smaller S.J. Delany and P. Cunningham. ``An analysis of case-based editing in a spam filtering system'', 2004.}
+    \end{itemize}
+
+    We copy these values for our baseline.
+\end{frame}
+\begin{frame}{Current datasets}
+    \centering
+    \smaller
+    \begin{tabular}{lrr}
+        \toprule
+        verbose name & found & has maintenance baseline \\\midrule
+        \textbf{Lenses} & True & \textbf{True} \\
+        \textbf{Credit Approval} & True & \textbf{True} \\
+        Zoo & True & False \\
+        Wine & True & False \\
+        Teaching Assistant Evaluation & True & False \\
+        Post-Operative Patient & True & False \\
+        Pima indians Diabetes & True & False \\
+        Lung Cancer & True & False \\
+        Liver Disorders & True & False \\
+        Iris & True & False \\
+        Ionosphere & True & False \\
+        Hepatitis & True & False \\
+        Heart Disease Cleveland & True & False \\
+        Haberman's Survival & True & False \\
+        Glass Identification & True & False \\
+        Dermatology & True & False \\
+        Breast Cancer Pronostic & True & False \\
+        Breast Cancer Diagnostic & True & False \\
+        Balance & True & False \\\bottomrule
+    \end{tabular}
+\end{frame}
+\begin{frame}{Current datasets}
+    \centering
+    \begin{tabular}{lrr}
+        \toprule
+        verbose name & found & has maintenance baseline \\\midrule
+        \textbf{Breathalyser} & False & \textbf{True} \\
+        Spam5 & False & False \\
+        Spam4 & False & False \\
+        Spam3 & False & False \\
+        Spam2 & False & False \\
+        Spam1 & False & False \\\bottomrule
+    \end{tabular}
+\end{frame}
+
+\section{Benchmark experiment setup}
+\begin{frame}{Process}
+
+    train/dev/test split: 60\%/20\%/20\%, as in the thesis
+
+    ~
+
+    train: cases in the CB at the start
+
+    dev: cases used for maintenance decision
+
+    test: cases used to mesure performance
+    
+\end{frame}
+\begin{frame}{Similarity}
+
+    \textbf{Numeric attribute:} $1 -$ normalized absolute distance
+    $$sim(x,y) = 1 - \frac{x-y}{max(X) - min(X)}$$
+    with $x,y$ the value of the att. for 2 cases,\\
+    $X$ the values of the att. for all cases in the CB
+    \\[2em]
+
+    \textbf{Symbolic attribute:}
+    $$sim(x,y) = 1 \text{ if } x=y \text{ else } 0$$
+    with $x,y$ the value of the att. for 2 cases
+    \\[2em]
+
+    \textbf{Overall similarity:}
+    weighted similarity (how the weights are obtained not mentioned in the thesis)
+
+\end{frame}
+\begin{frame}{Models}
+
+    
+    \begin{itemize}
+        \item MeATCube
+        \item 1NN: 1-Nearest-Neighbor
+        \item ``KNN'': ``All''-Nearest-Neighbor\\
+        outcome obtained by voting, vote weight inversely proportional to similarity of the case with the target\\
+        Cummins mention this model without specifying the $k$ of $k$NN, so we take all cases. 
+    \end{itemize}
+
+\end{frame}
+\begin{frame}{Processing}
+
+    Processing (MeATCube):\begin{enumerate}
+        \item set \textbf{unit weights} for each feature in the similarity for MeATCube
+        \item compress MeATCube using hinge competence
+    \end{enumerate}
+
+    At each compression step step:
+    \begin{itemize}
+        \item Compute MeATCube prediction performance
+        \item Recompute weights for 1NN and KNN and compute performance (does not change the weights of MeATCube)
+    \end{itemize}
+
+\end{frame}
+\begin{frame}{Processing}
+
+    Processing (1-NN and k-NN):\begin{enumerate}
+        \item take current cases in the CB
+        \item find feature weights using Neighborhood Components Analysis (NCA):\\
+        \textit{``learns a linear transformation in a supervised fashion to improve the classification accuracy of a stochastic nearest neighbors rule in the transformed space''} (scikit-learn documentation)
+        \item \textbf{[NEW!]} find feature weights using:\\
+        \textit{``Weighted Similarity Measure for k-Nearest Neighbors Algorithm''}
+        B. Karabulut, G. Arslan, H. M. Ünver, 2019, Celal Bayar University Journal of Science
+    
+        \item compute accuracy
+    \end{enumerate}
+
+\end{frame}
+
+
+\begin{frame}{Result summary: conclusions (details after)}
+    \begin{itemize}
+        \item using NCA: \begin{itemize}
+            \item Neither 1-NN nor k-NN \textbf{computed} match \textbf{reported} performance (before compression) except in rare cases.
+        \end{itemize}
+         
+        \item using Karabulut \textit{et al.}'s method:\begin{itemize}
+            \item 1-NN much closer to \textbf{reported} perf., more stable, and sometimes some interesting effects along the deletion process:\\
+            \textit{e.g.}, k-NN and 1-NN perf. up at the very end of the process (more analysis needed).
+            \item \textit{/!\textbackslash completely anachronistic: Cummins in 2013, Karabulut \textit{et al.} in 2019.}
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+\begin{frame}{Result summary: conclusions (details after)}
+    \begin{itemize}
+        \item Except for ``Post-Operative Patient'', MeATCube outperforms 1-NN and k-NN at its optimum for size \& performance.
+        \item MeATCube outperforms the baselines for maintenance in 1 of the 2 datasets for which we have the information.
+        
+        For the other we do not know if the performance difference is due to the method itself or to a bad similarity, \textit{cf.} k-NN performance mismatch.
+    \end{itemize}
+\end{frame}
+
+\section{Attempt to fix weights}
+\begin{frame}{Attempt to fix weights}
+    ``Weighted Similarity Measure for k-Nearest Neighbors Algorithm''
+    B. Karabulut, G. Arslan, H. M. Ünver, 2019, Celal Bayar University Journal of Science
+
+    ~
+
+    \textbf{Computed on the CB}
+
+    ~
+
+    Using scikit-learn notation $X, y$ for ``situations, outcomes'':
+    \begin{itemize}
+        \item 
+        $X$: situations for cases in the CB
+        \item 
+        $y$: outcomes for cases in the CB
+        \item 
+        $X[k] \in X$: situation of case $k$
+        \item 
+        $X[k][a]$: value of attribute $a$ for case $k$
+        \item 
+        $y[k] \in classes$: outcome for case $k$
+        \item 
+        $len(X) = len(y) = |CB|$
+    \end{itemize}
+\end{frame}
+\begin{frame}{Attempt to fix weights}
+    \smaller
+    $C_i(a)$: set of values for attribute $a$ belonging to class $i$
+    $$C_i(a) = \{X[k][a]: X[k] \in X \text{ and }y[k]=i\}$$
+    
+~
+
+    $A_i(a)$: set of cases with attribute $a$ within values of class $i$
+    $$A_i(a) = \{X[k] \in X: min(C_i(a)) \leq X[k][a] \leq max(C_i(a))\}$$
+    $$A_i(a) = \{X[k] \in X: X[k][a] \in C_i(a)\} \text{ for nominal att. (defined by me)}$$
+    
+~
+
+    $B_i(a)$: set of cases with attribute $a$ within values of class $i$ but not any other class
+    $$B_i(a) = A_i(a) - \cup_{i\ne j, j\in classes} A_j(a)$$
+    
+~
+
+    $w_a$: weight for attribute $a$, average ``ability to discriminate''
+    $$w_a=|\cup_{i\in classes} B_i(a)| / n, \; n: len(X)$$ 
+    
+    $w_a*=w_a/(\sum_{a'} w_{a'})$: normalized $w_a$
+
+    ~
+
+    {\smaller\smaller(in paper it was $w_a=(\bigcup_{i\in classes} |B_i(a)|) / n$, but it makes no sense)}
+
+\end{frame}
+\begin{frame}{Attempt to fix weights}
+    Karabulut \textit{et al.}'s method not perfect
+
+    ~
+
+    Issue: may not scale well for symbolic attributes, as this part is custom made by me
+
+    ~
+
+    balance+scale: all $B_i(a)=\emptyset$, need to add a default value and weights end up all equal
+\end{frame}
+
+\section{Results}
+
+\begin{frame}{Result format}
+
+    ``Steps'':
+    \begin{itemize}
+        \item initial: CB before maintenance
+        \item best MeATCube F1: step where MeATCube reaches its highest F1
+        \item best MeATCube acc.: step where MeATCube reaches its highest accuracy
+        \item best KNN acc.: ``All''-Nearest-Neighbor (vote inversely proportional to similarity) reaches its highest accuracy
+        \item best 1NN acc.: 1-Nearest-Neighbor reaches its highest accuracy
+        \item \textit{if multiple with same score, take the one with the smallest CB}
+    \end{itemize}
+
+\end{frame}
+\begin{frame}{Result format}
+
+    Available metrics:
+    \begin{itemize}
+        \item cb size
+        \item deletion rate $= 1 - (\text{cb size}/\text{initial size})$
+        \item step $= \text{initial size} - \text{cb size}$
+        \item MeATCube F1 (macro) \& acc.
+        \item KNN \& 1NN acc.
+        \end{itemize}
+\end{frame}
+
+\begin{frame}{Result: MeATCube outperforms all but RC}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \underline{\textbf{Lenses}} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            Liver Disorders \\
+            Iris \\
+            Ionosphere \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            Glass Identification \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/lenses}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/lenses}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result: MeATCube outperforms k-NN, not the baseline}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \underline{\textbf{Credit Approval}} \\
+            Zoo \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            Liver Disorders \\
+            Iris \\
+            Ionosphere \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            Glass Identification \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/credit+approval}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/credit+approval}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result: {\smaller MeATCube outperforms baseline and reaches perfect scores}}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            \underline{Zoo} \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            Liver Disorders \\
+            Iris \\
+            Ionosphere \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            Glass Identification \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/zoo}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/zoo}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            \underline{Wine} \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            Liver Disorders \\
+            Iris \\
+            Ionosphere \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            Glass Identification \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/wine}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/wine}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result: MeATCube outperforms baseline}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            Wine \\
+            \underline{Teaching Assistant Evaluation} \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            Liver Disorders \\
+            Iris \\
+            Ionosphere \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            Glass Identification \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/kaggle+teaching+assistant+evaluation.png}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/kaggle+teaching+assistant+evaluation.png}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result: MeATCube outperformed}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            \underline{Post-Operative Patient} \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            Liver Disorders \\
+            Iris \\
+            Ionosphere \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            Glass Identification \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/post+operative+patient.png}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/post+operative+patient.png}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            \underline{Pima indians Diabetes} \\
+            Lung Cancer \\
+            Liver Disorders \\
+            Iris \\
+            Ionosphere \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            Glass Identification \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/kaggle+pima+indian+diabetes.png}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/kaggle+pima+indian+diabetes.png}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result: MeATCube significantly outperforms everything}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            \underline{Lung Cancer} \\
+            Liver Disorders \\
+            Iris \\
+            Ionosphere \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            Glass Identification \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/lung+cancer.png}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/lung+cancer.png}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result: MeATCube significantly outperforms everything}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            \underline{Liver Disorders} \\
+            Iris \\
+            Ionosphere \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            Glass Identification \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/liver+disorders.png}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/liver+disorders.png}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result: all models comparable}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            Liver Disorders \\
+            \underline{Iris} \\
+            Ionosphere \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            Glass Identification \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/iris.png}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/iris.png}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            Liver Disorders \\
+            Iris \\
+            \underline{Ionosphere} \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            Glass Identification \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/ionosphere.png}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/ionosphere.png}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            Liver Disorders \\
+            Iris \\
+            Ionosphere \\
+            \underline{Hepatitis} \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            Glass Identification \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/hepatitis.png}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/hepatitis.png}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result: k-NN and MeATCube \textbf{appear} correlated}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            Liver Disorders \\
+            Iris \\
+            Ionosphere \\
+            Hepatitis \\
+            \underline{Heart Disease Cleveland} \\
+            Haberman's Survival \\
+            Glass Identification \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/heart+disease.png}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/heart+disease.png}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            Liver Disorders \\
+            Iris \\
+            Ionosphere \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            \underline{Haberman's Survival} \\
+            Glass Identification \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/haberman+s+survival.png}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/haberman+s+survival.png}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            Liver Disorders \\
+            Iris \\
+            Ionosphere \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            \underline{Glass Identification} \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/glass+identification.png}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/glass+identification.png}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            Liver Disorders \\
+            Iris \\
+            Ionosphere \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            Glass Identification \\
+            \underline{Dermatology} \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/dermatology.png}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/dermatology.png}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            Liver Disorders \\
+            Iris \\
+            Ionosphere \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            Glass Identification \\
+            Dermatology \\
+            \underline{Breast Cancer Pronostic} \\
+            Breast Cancer Diagnostic \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/breast+cancer+wisconsin+prognostic.png}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/breast+cancer+wisconsin+prognostic.png}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            Liver Disorders \\
+            Iris \\
+            Ionosphere \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            Glass Identification \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            \underline{Breast Cancer Diagnostic} \\
+            Balance\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/breast+cancer+wisconsin+diagnostic.png}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/breast+cancer+wisconsin+diagnostic.png}
+        \end{column}
+    \end{columns}
+\end{frame}
+\begin{frame}{Result}
+    \begin{columns}
+        \begin{column}{.35\textwidth}
+            {\smaller\smaller
+            \textbf{Lenses} \\
+            \textbf{Credit Approval} \\
+            Zoo \\
+            Wine \\
+            Teaching Assistant Evaluation \\
+            Post-Operative Patient \\
+            Pima indians Diabetes \\
+            Lung Cancer \\
+            Liver Disorders \\
+            Iris \\
+            Ionosphere \\
+            Hepatitis \\
+            Heart Disease Cleveland \\
+            Haberman's Survival \\
+            Glass Identification \\
+            Dermatology \\
+            Breast Cancer Pronostic \\
+            Breast Cancer Diagnostic \\
+            \underline{Balance}\\
+            ~}
+        \end{column}
+        \begin{column}{.65\textwidth}
+            \includegraphics[width=.8\textwidth]{../results/figs/balance+scale}
+            \includegraphics[width=.8\textwidth]{../results-weight-estim+/figs/balance+scale}
+        \end{column}
+    \end{columns}
+\end{frame}
+
+
+\section{What next}
+\begin{frame}{What next}
+    Datasets to add?
+
+    ~
+
+    Fixing the weights: how?
+
+    ~
+
+    Apply the baselines instead of copying them
+
+    Apply more recent baselines
+
+    ~
+
+    Cross-validation
+\end{frame}
+\end{document}

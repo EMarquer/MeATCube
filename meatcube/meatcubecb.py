@@ -4,6 +4,7 @@ import pandas as pd
 from typing import Union, Literal, Tuple, Optional, Callable, Generic, TypeVar, Iterable, List
 from collections.abc import Sequence
 from scipy.spatial.distance import squareform, pdist, cdist
+from tqdm.auto import tqdm
 
 try:
     from .torch_backend import MeATCubeEnergyComputations, remove_index, append_symmetric, NORMALIZE, pairwise_dist, cart_dist
@@ -505,9 +506,8 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
             # --------- Batches of cases ---------
             elif batch_size > 1:
                 inversion_rates_i = []
-                import tqdm
                 index_batches = [index[i:i+batch_size] for i in range(0, len(index), batch_size)]
-                for index_batch in tqdm.tqdm(index_batches,  "Case batch (competence)", **tqdm_args):
+                for index_batch in tqdm(index_batches,  "Case batch (competence)", **tqdm_args):
                 #for index_batch in index_batches:
                     source_sim_matrix_i = torch.stack([
                         remove_index(self.source_sim_matrix, i, dims=[-1,-2])
@@ -538,8 +538,7 @@ class MeATCubeCB(Sequence, Generic[SourceSpaceElement, OutcomeSpaceElement]):
             # --------- Case by case ---------
             else:
                 inversion_rates_i = []
-                import tqdm
-                for i in tqdm.tqdm(index, "Case (competence)", **tqdm_args):
+                for i in tqdm(index, "Case (competence)", **tqdm_args):
                 #for i in index:
                     source_sim_matrix_i = remove_index(self.source_sim_matrix, i, dims=[-1,-2])
                     outcome_sim_matrix_i = remove_index(self.outcome_sim_matrix, i, dims=[-1,-2])

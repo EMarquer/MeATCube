@@ -142,3 +142,6 @@ def accuracy(knn: KNN, X_test, y_test, k=-1):
     pred = knn.classify(X_test, k=k)
     acc = (y_test == np.array(pred)).astype(float).mean()
     return acc
+
+from sklearn.neighbors import KNeighborsClassifier
+KNNSklearn = lambda dist, n_neighbors=5: KNeighborsClassifier(n_neighbors=n_neighbors, weights="distance", metric=dist)

@@ -2,6 +2,7 @@
 import torch
 import numpy as np
 from typing import Union, Literal, Tuple, Optional, Callable, Generic, TypeVar, Iterable, List
+from tqdm.auto import tqdm
 
 try:
     from .meatcubecb import MeATCubeCB, SourceSpaceElement, OutcomeSpaceElement, NORMALIZE
@@ -165,11 +166,11 @@ MAINTENANCE_MONITORABLE_MEASURES = {
     },
     "accuracy": {
         "comparator": MAX_COMPARATOR,
-        "measure": lambda cb, test_cases_sources, test_cases_outcomes: accuracy(cb, test_cases_sources, test_cases_outcomes)
+        "measure": lambda cb, test_cases_sources, test_cases_outcomes: accuracy(cb, test_cases_sources, test_cases_outcomes).cpu().item()
     },
     "hinge": {
         "comparator": MAX_COMPARATOR,
-        "measure": lambda cb, test_cases_sources, test_cases_outcomes: cb.competence(test_cases_sources, test_cases_outcomes)
+        "measure": lambda cb, test_cases_sources, test_cases_outcomes: cb.competence(test_cases_sources, test_cases_outcomes).cpu().item()
     }
 }
 def decrement_early_stopping(cb: MeATCubeCB,
@@ -184,7 +185,8 @@ def decrement_early_stopping(cb: MeATCubeCB,
                 monitor: Literal["F1", "accuracy", "hinge", "CB size"]="F1",
                 register: Union[
                     Literal["F1", "accuracy", "hinge", "CB size"],
-                    Iterable[Literal["F1", "accuracy", "hinge", "CB size"]]
+                    Tuple[str, Callable],
+                    Iterable[Union[Literal["F1", "accuracy", "hinge", "CB size"], Tuple[str, Callable]]]
                     ]="F1",
                 min_delta: float=0.,
                 patience: int=3,
@@ -194,23 +196,31 @@ def decrement_early_stopping(cb: MeATCubeCB,
     """Iterative decremental process that stops using an early stopping heuristic.
     
     :param monitor: performance measure to be monitored
+    :param register: either one of the provided metrics, or a callable with parameters (cb, test_cases_sources, test_cases_outcomes).
+        for callables, they must be provided with a label as a tuple (label, callable)
     :param min_delta:  minimum change in the monitored quantity to qualify as an improvement, i.e. an absolute change of less than min_delta, will count as no improvement
     :param patience: number of steps with no improvement after which the process will be stopped
 
     """
-    def registered_measures(cb):
+    def registered_measures(cb, register_=register):
         """Compute the performance measures to register"""
-        if not isinstance(register, str) and isinstance(register, Iterable):
-            return {
-                register_: MAINTENANCE_MONITORABLE_MEASURES[register_]["measure"](cb, test_cases_sources, test_cases_outcomes)
-                for register_ in register
-            }
-        else:
-            return {register: MAINTENANCE_MONITORABLE_MEASURES[register]["measure"](cb, test_cases_sources, test_cases_outcomes)}
+        if not isinstance(register_, (str, tuple)) and isinstance(register_, Iterable): # recursive case
+            measures = dict()
+            for register_elem in register_:
+                measure = registered_measures(cb, register_=register_elem)
+                measures.update(measure)
+            return measures
+        else: # base case
+            if isinstance(register_, str):
+                return {register_: MAINTENANCE_MONITORABLE_MEASURES[register_]["measure"](cb, test_cases_sources, test_cases_outcomes)}
+            elif isinstance(register_, tuple) and callable(register_[1]):
+                return {register_[0]: register_[1](cb, test_cases_sources, test_cases_outcomes)}
+            else:
+                raise ValueError(f"{register_} not of a valid type")
     best_perf = MAINTENANCE_MONITORABLE_MEASURES[monitor]["measure"](cb, test_cases_sources, test_cases_outcomes)
     best_perf_step = 0
     best_record = {
-        "cb": cb,
+        "cb": cb.to("cpu"), # put to cpu as a safety measure
         "step": 0,
         "cb_size": len(cb),
         "cases_removed": None, # index relative to CB from last step
@@ -220,7 +230,7 @@ def decrement_early_stopping(cb: MeATCubeCB,
     }
     if return_all:
         records = [{
-            "cb": cb,
+            "cb": cb.to("cpu"), # put to cpu as a safety measure
             "step": 0,
             "cb_size": len(cb),
             "cases_removed": None, # index relative to CB from last step
@@ -231,8 +241,13 @@ def decrement_early_stopping(cb: MeATCubeCB,
     cases = list(range(len(cb)))
     removed = []
 
-    import tqdm
-    for step_id in tqdm.tqdm(range(1, len(cb)//step_size), position=0, desc="Compression step"):
+    if "position" not in tqdm_args.keys():
+        tqdm_args["position"] = 0
+    tqdm_args_inner = {**tqdm_args}
+    tqdm_args_inner["position"] = tqdm_args_inner["position"]+1
+    tqdm_args_inner["leave"] = False
+    tqdm_bar = tqdm(range(1, len(cb)//step_size), **tqdm_args, desc="Compression step")
+    for step_id in tqdm_bar:
         cb, competences, result_index = decrement(cb,
                 test_cases_sources,
                 test_cases_outcomes,
@@ -243,7 +258,7 @@ def decrement_early_stopping(cb: MeATCubeCB,
                 k=step_size,
                 return_all=True,
                 batch_size=batch_size,
-                tqdm_args={"position": 1, "leave":False}) 
+                tqdm_args=tqdm_args_inner) 
 
         if step_size > 1:
             removed.extend(cases[idx] for idx in result_index)
@@ -253,15 +268,17 @@ def decrement_early_stopping(cb: MeATCubeCB,
             cases.pop(result_index)
         
         perf = MAINTENANCE_MONITORABLE_MEASURES[monitor]["measure"](cb, test_cases_sources, test_cases_outcomes)
+        registered_measures_ = registered_measures(cb)
         record = {
-                "cb": cb,
+                "cb": cb.to("cpu"), # put to cpu as a safety measure
                 "step": step_id,
                 "cb_size": len(cb),
                 "cases_removed": result_index,
                 "all_cases_removed": [*removed], # copy the list as it is modified at each step
                 "competences_before_removal": competences,
-                **registered_measures(cb),
+                **registered_measures_,
             }
+        tqdm_bar.set_postfix(registered_measures_)
         if return_all:
             records.append(record)
 

@@ -45,13 +45,13 @@ def accuracy(cb: MeATCubeCB, X, y):
     return acc
 
 def precision_recall_fscore_support(cb: MeATCubeCB, X, y, average: Literal['binary', 'micro', 'macro', 'samples', 'weighted']='macro'):
-    gold_labels = cb.outcome_index(y)
-    pred_labels = cb.predict(X, return_outcome_indices=True)
+    gold_labels = cb.outcome_index(y).cpu()
+    pred_labels = cb.predict(X, return_outcome_indices=True).cpu()
     return precision_recall_fscore_support_(gold_labels, pred_labels, average=average, zero_division=0)
 
 def f1_score(cb: MeATCubeCB, X, y, average: Literal['binary', 'micro', 'macro', 'samples', 'weighted']='macro'):
-    gold_labels = cb.outcome_index(y)
-    pred_labels = cb.predict(X, return_outcome_indices=True)
+    gold_labels = cb.outcome_index(y).cpu()
+    pred_labels = cb.predict(X, return_outcome_indices=True).cpu()
     return f1_score_(gold_labels, pred_labels, average=average, zero_division=0)
 
 def mce(cb: MeATCubeCB, X, y):
