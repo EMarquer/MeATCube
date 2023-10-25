@@ -3,6 +3,9 @@ import torch
 import numpy as np
 from typing import Union, Literal, Tuple, Optional, Callable, Generic, TypeVar, Iterable, List
 from tqdm.auto import tqdm
+from datetime import datetime
+import os
+import pickle
 
 try:
     from .meatcubecb import MeATCubeCB, SourceSpaceElement, OutcomeSpaceElement, NORMALIZE
@@ -192,7 +195,8 @@ def decrement_early_stopping(cb: MeATCubeCB,
                 patience: int=3,
                 batch_size=0,
                 verbose=False,
-                tqdm_args=dict()):
+                tqdm_args=dict(),
+                checkpoint_folder: str=None):
     """Iterative decremental process that stops using an early stopping heuristic.
     
     :param monitor: performance measure to be monitored
@@ -200,7 +204,7 @@ def decrement_early_stopping(cb: MeATCubeCB,
         for callables, they must be provided with a label as a tuple (label, callable)
     :param min_delta:  minimum change in the monitored quantity to qualify as an improvement, i.e. an absolute change of less than min_delta, will count as no improvement
     :param patience: number of steps with no improvement after which the process will be stopped
-
+    :param checkpoint_folder: if specified, will store the state of the CB at each step into a separate file instead of returning it
     """
     def registered_measures(cb, register_=register):
         """Compute the performance measures to register"""
@@ -219,8 +223,9 @@ def decrement_early_stopping(cb: MeATCubeCB,
                 raise ValueError(f"{register_} not of a valid type")
     best_perf = MAINTENANCE_MONITORABLE_MEASURES[monitor]["measure"](cb, test_cases_sources, test_cases_outcomes)
     best_perf_step = 0
+    cb_cpu = cb.to("cpu")
     best_record = {
-        "cb": cb.to("cpu"), # put to cpu as a safety measure
+        "cb": cb_cpu, # put to cpu as a safety measure
         "step": 0,
         "cb_size": len(cb),
         "cases_removed": None, # index relative to CB from last step
@@ -228,16 +233,18 @@ def decrement_early_stopping(cb: MeATCubeCB,
         "competences_before_removal": None,
         **registered_measures(cb),
     }
+    best_cb = cb_cpu
+    max_cb_size = best_record["cb_size"]
+    if checkpoint_folder is not None:
+        os.makedirs(checkpoint_folder, exist_ok=True)
+        with open(
+            os.path.join(checkpoint_folder, f"cb_step_{'0'.rjust(len(str(max_cb_size)), '0')}.pkl"),
+            "wb") as f:
+            pickle.dump(best_record.pop("cb"), f)
+        
     if return_all:
-        records = [{
-            "cb": cb.to("cpu"), # put to cpu as a safety measure
-            "step": 0,
-            "cb_size": len(cb),
-            "cases_removed": None, # index relative to CB from last step
-            "all_cases_removed": None, # absolute index, relative to first state of the CB
-            "competences_before_removal": None,
-            **registered_measures(cb),
-        }]
+        records = [best_record]
+
     cases = list(range(len(cb)))
     removed = []
 
@@ -248,6 +255,7 @@ def decrement_early_stopping(cb: MeATCubeCB,
     tqdm_args_inner["leave"] = False
     tqdm_bar = tqdm(range(1, len(cb)//step_size), **tqdm_args, desc="Compression step")
     for step_id in tqdm_bar:
+        start_time = datetime.now()
         cb, competences, result_index = decrement(cb,
                 test_cases_sources,
                 test_cases_outcomes,
@@ -266,10 +274,13 @@ def decrement_early_stopping(cb: MeATCubeCB,
         else:
             removed.append(cases[result_index])
             cases.pop(result_index)
+        total_time = datetime.now() - start_time
         
         perf = MAINTENANCE_MONITORABLE_MEASURES[monitor]["measure"](cb, test_cases_sources, test_cases_outcomes)
         registered_measures_ = registered_measures(cb)
+        cb_cpu = cb.to("cpu")
         record = {
+                "step_time": total_time,
                 "cb": cb.to("cpu"), # put to cpu as a safety measure
                 "step": step_id,
                 "cb_size": len(cb),
@@ -278,6 +289,11 @@ def decrement_early_stopping(cb: MeATCubeCB,
                 "competences_before_removal": competences,
                 **registered_measures_,
             }
+        if checkpoint_folder is not None:
+            with open(
+                os.path.join(checkpoint_folder, f"cb_step_{str(step_id).rjust(len(str(max_cb_size)), '0')}.pkl"),
+                "wb") as f:
+                pickle.dump(record.pop("cb"), f)
         tqdm_bar.set_postfix(registered_measures_)
         if return_all:
             records.append(record)
@@ -286,13 +302,14 @@ def decrement_early_stopping(cb: MeATCubeCB,
             best_perf=perf
             best_perf_step=step_id
             best_record=record
+            best_cb=cb_cpu
         elif step_id - best_perf_step >= patience:
             break
 
     if return_all:
-        return records[best_perf_step]["cb"], records, records[best_perf_step]
+        return best_cb, records, records[best_perf_step]
     else:
-        return best_record["cb"]
+        return best_cb
     
 
 def diversity(cb: MeATCubeCB, ranks, k=1):
