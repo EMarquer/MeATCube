@@ -1,5 +1,0 @@
-\beamer@sectionintoc {1}{Baseline}{2}{0}{1}
-\beamer@sectionintoc {2}{Benchmark experiment setup}{8}{0}{2}
-\beamer@sectionintoc {3}{Attempt to fix weights}{15}{0}{3}
-\beamer@sectionintoc {4}{Results}{18}{0}{4}
-\beamer@sectionintoc {5}{What next}{39}{0}{5}

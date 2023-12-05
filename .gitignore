@@ -49,3 +49,36 @@ package.nls.*.json
 l10n/
 
 .coverage
+
+
+
+# Latex stuff
+**/*.fdb_latexmk
+**/*.fls
+**/*.log
+**/*.out
+**/*.synctex*
+**/*.aux
+**/*.acn
+**/*.acr
+**/*.alg
+**/*.bcf
+**/*.blg
+**/*.glg
+**/*.glo
+**/*.gls
+**/*.ist
+**/*.maf
+**/*.mtc*
+**/*.ptc*
+**/*.run.xml
+**/*.thm
+**/*.toc
+**/*.bbl
+**/*-blx.bib
+**/aux
+**/svg-inkscape
+**/*.bkp
+**/*.vrb
+**/*.snm
+**/*.nav
