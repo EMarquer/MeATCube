@@ -35,3 +35,6 @@ if __name__ == "__main__":
     utils.save_dataset_as_pickle(np_X, np_y, numeric_columns_idx, __file__, y_meaning)
     # test if loading works properly
     print(utils.load_dataset_from_pickle(utils.auto_dataset_name_from_preprocess_file(__file__)))
+    data = utils.load_dataset_from_pickle(utils.auto_dataset_name_from_preprocess_file(__file__))
+    print(f"Instances {data['y'].shape[0]} Labels {len(data['y_meaning'])} Nominal & continuous features {len(data['symbolic_columns'])} {len(data['numeric_columns'])}")
+    print(f"{data['y'].shape[0]} & {len(data['symbolic_columns'])} & {len(data['numeric_columns'])} & {len(data['y_meaning'])}")
