@@ -13,7 +13,7 @@ except ImportError as e:
     except ImportError:
         raise e
     
-def confidence(cb: MeATCubeCB, X, keepdim=True):
+def confidence(cb: MeATCubeCB, X, keepdim=True, batched=False):
     """Returns a tensor with, for each possible outcome, the confidence (as defined for energy-based models) of the CB in the prediction for `sources`.
     
     If `keepdim=True`, the confidence is a [|R|, |S|] matrix,
@@ -21,20 +21,25 @@ def confidence(cb: MeATCubeCB, X, keepdim=True):
     
     If `keepdim=False`, the confidence is a [|S|] vector, with for each source `s∈S`, the confidence in the predicted outcome.
     """
-    outcomes, logits = cb.predict(X, return_logits=True, return_outcome_indices=True)
-
-    conf = torch.zeros_like(logits).transpose(-1, -2)
-    for outcome in cb.potential_outcomes:
-        outcome_id = cb.outcome_index(outcome)
-        mask = outcomes == outcome_id
-        sorted_logits = logits[mask].sort(dim=-1, descending=False).values.transpose(-1, -2)
-        #conf[outcome, mask] = logits[mask,outcome] - sorted_logits[1]
-        conf[outcome_id, mask] = sorted_logits[1] - sorted_logits[0]
-
-    if keepdim:
-        return conf
+    if batched:
+        confidences = torch.stack([
+            confidence(cb, X, keepdim=True, batched=False)
+        ])
     else:
-        return conf.sum(dim=0)
+        outcomes, logits = cb.predict(X, return_logits=True, return_outcome_indices=True)
+
+        conf = torch.zeros_like(logits).transpose(-1, -2)
+        for outcome in cb.potential_outcomes:
+            outcome_id = cb.outcome_index(outcome)
+            mask = outcomes == outcome_id
+            sorted_logits = logits[mask].sort(dim=-1, descending=False).values.transpose(-1, -2)
+            #conf[outcome, mask] = logits[mask,outcome] - sorted_logits[1]
+            conf[outcome_id, mask] = sorted_logits[1] - sorted_logits[0]
+
+        if keepdim:
+            return conf
+        else:
+            return conf.sum(dim=0)
 
 def accuracy(cb: MeATCubeCB, X, y):
     gold_labels = cb.outcome_index(y)

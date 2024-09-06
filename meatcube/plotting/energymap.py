@@ -62,9 +62,9 @@ def energymap_points(X, transform=None, ax: plt.Axes=None, resolution=50):
 
     return xk, yk, X_2D_heatmap, X_heatmap, transform, (x_min, x_max), (y_min, y_max)
 
-def fill_energymap_values(cb: MeATCubeCB, xk, yk, X_2D_heatmap, X_heatmap):
+def fill_energymap_values(cb: MeATCubeCB, xk, yk, X_2D_heatmap, X_heatmap, batched=False):
     # get the confidence
-    conf = confidence(cb, X_heatmap)
+    conf = confidence(cb, X_heatmap, batched=batched)
 
     # normalize to get conf as alpha
     max_conf = conf.max()
@@ -78,7 +78,7 @@ def fill_energymap_values(cb: MeATCubeCB, xk, yk, X_2D_heatmap, X_heatmap):
             z[outcome_id, j, i] = conf_ij
     return z
 
-def energymap(cb: MeATCubeCB, X=None, transform=None, outcome_colors=None, ax: plt.Axes=None, resolution=50, alpha=.35) -> Tuple[List[plc.QuadMesh], Any]:
+def energymap(cb: MeATCubeCB, X=None, transform=None, outcome_colors=None, ax: plt.Axes=None, resolution=50, alpha=.35, batched=False) -> Tuple[List[plc.QuadMesh], Any]:
     if outcome_colors is None: outcome_colors = sns.color_palette()
     if X is None: X = cb.CB_source
 
@@ -93,7 +93,7 @@ def energymap(cb: MeATCubeCB, X=None, transform=None, outcome_colors=None, ax: p
     ax.set_ylim(y_min, y_max)
 
     # find values for the points
-    z = fill_energymap_values(cb, xk, yk, X_2D_heatmap, X_heatmap)
+    z = fill_energymap_values(cb, xk, yk, X_2D_heatmap, X_heatmap, batched=batched)
 
     # display the heatmap of each class
     energy_maps = []

@@ -3,10 +3,11 @@ import numpy as np
 import pandas as pd
 from typing import Union, Literal, Tuple, Optional, Callable, Generic, TypeVar, Iterable, List
 from scipy.spatial.distance import squareform, pdist, cdist
+from tqdm.auto import tqdm
 
 NORMALIZE = False
 
-# def batching_utils(batch_size=0, dim = 0, use_tqdm=False, tqdm_args)
+# def batching_utils(batch_size=0, dim = 0, use_tqdm=False, tqdm_args={}):
 #     batches_results = []
 #     index_batches = [index[i:i+batch_size] for i in range(0, len(index), batch_size)]
 #     for index_batch in (

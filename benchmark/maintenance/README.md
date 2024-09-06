@@ -24,3 +24,30 @@ ordinal as actual ordinal instead of nominal
 further down the line:
 optimize similarity benefits from compression ? i.e. alternate optimize similarity & compression
 
+-----
+05/07/2024
+-----
+
+- Alzaimer data: minimize number of tests, select subset of 15~20 reference patients
+~150 patients
+
+-> interface ? "faire varier les coefs, afficher de manière interactive la frontière de decision"
+
+
+- implementation
+  - continuous seems easy to adapt
+  - common interface including drawing (and sklearn templates?)
+    - energy based model 
+  
+  - picker: ui
+  - b(i)scoat: Coat contimue + boosting (2cas)
+  - ct: Coat contimue
+  - ctknn: Coat contimue +fonction d'energie de knn
+
+
+
+- repair expe real data:
+  - scaling?
+  - "true" euclidean distance on the numeric data?
+  - no tuning
+  - only step 0 for kNN
