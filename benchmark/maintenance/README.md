@@ -51,3 +51,12 @@ optimize similarity benefits from compression ? i.e. alternate optimize similari
   - "true" euclidean distance on the numeric data?
   - no tuning
   - only step 0 for kNN
+
+
+
+3 ensembles:
+- S (base de cas) 
+- V (base de validation) 
+- Test
+
+faire version naive de continuous coat comme démo de l'implémentation de modèles

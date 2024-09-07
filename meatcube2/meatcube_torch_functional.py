@@ -19,15 +19,32 @@ NORMALIZE = False
 
 def pop_index(matrix: torch.Tensor, i, dim=0) -> torch.Tensor:
     dim = (dim + matrix.dim()) % matrix.dim()
-    slice_base = [slice(None)]*dim
-    slice_start = slice_base + [slice(i)]
-    slice_excluded = slice_base + [int(i)]
-    slice_end = slice_base + [slice(i+1, None)]
-    return torch.cat((matrix[slice_start], matrix[slice_end]), dim=dim), matrix[slice_excluded]
+    i = (i + matrix.size(dim)) % matrix.size(dim)
+    if i==0:
+        slice_base = [slice(None)]*dim
+        m = matrix[slice_base+[slice(i+1,None)]]
+        m_excluded = matrix[slice_base+[int(i)]]
+        return m, m_excluded
+    elif i==matrix.size(dim)-1:
+        slice_base = [slice(None)]*dim
+        m = matrix[slice_base+[slice(None,i)]]
+        m_excluded = matrix[slice_base+[int(i)]]
+        return m, m_excluded
+    else:
+        slice_base = [slice(None)]*dim # slices that stay the same [:, :, ...]
+        slice_start = slice_base + [slice(i)] # values before the value to remove
+        slice_excluded = slice_base + [int(i)] # value to remove
+        slice_end = slice_base + [slice(i+1, None)] # values after the value to remove
+        m_start = matrix[slice_start]
+        m_excluded = matrix[slice_excluded]
+        m_end = matrix[slice_end]
+        m = torch.cat([m_start, m_end], dim=dim)
+        
+        return m, m_excluded
 
 def remove_index(matrix: torch.Tensor, i, dims: List[int]) -> torch.Tensor:
     for dim in dims:
-        matrix = pop_index(matrix, i, dim=dim)[0]
+        matrix, m_excluded = pop_index(matrix, i, dim=dim)
     return matrix
 
 def append_symmetric(symmetric_matrix: torch.Tensor, vect: torch.Tensor, cell: torch.Tensor):
@@ -101,11 +118,9 @@ def cart_dist(a: Union[np.ndarray, pd.DataFrame, pd.Series, torch.Tensor],
 class MeATCubeEnergyComputations(object):
     """(Me)asure of the complexity of a dataset for (A)nalogical (T)ransfer using Boolean (Cube)s, or slices of them."""
     @staticmethod
-    def _energy(cube, normalize=NORMALIZE):
+    def _energy(cube):
         """The energy of the case base is the """
         e = cube.sum(dim=[-3,-2,-1])
-        if normalize:
-            return (e).pow(1./3) / (cube.size(-1))
         return e
 
     @staticmethod
@@ -247,8 +262,7 @@ class MeATCubeEnergyComputations(object):
                  new_sim_source: torch.Tensor,
                  new_sim_outcome: torch.Tensor,
                  reflexive_sim_source: Union[float, torch.Tensor]=1, 
-                 reflexive_sim_outcome: Union[float, torch.Tensor]=1, 
-                 normalize=NORMALIZE) -> torch.Tensor:
+                 reflexive_sim_outcome: Union[float, torch.Tensor]=1) -> torch.Tensor:
         """The idea is to compute the inversions for every possible outcome, and make the choice of the right one only afterwards.
         
         For a base `CB` of `M` cases and a new case `i`, computes the inversions involving `i`.
@@ -290,10 +304,7 @@ class MeATCubeEnergyComputations(object):
         gamma_aii = 0 # cannot invert itself
         gamma_iii = 0 # cannot invert itself, special case of gamma_aii
 
-        if normalize:
-            return (gamma_ibc + gamma_aic + gamma_abi + gamma_aii + gamma_ibi + gamma_iic + gamma_iii).pow(1./3) / (sim_source.size(-1) + 1)
-        else:
-            return gamma_ibc + gamma_aic + gamma_abi + gamma_aii + gamma_ibi + gamma_iic + gamma_iii
+        return gamma_ibc + gamma_aic + gamma_abi + gamma_aii + gamma_ibi + gamma_iic + gamma_iii
     
     @staticmethod
     def _gamma_i_included(sim_source, sim_outcome, i) -> torch.Tensor:
@@ -326,7 +337,7 @@ class MeATCubeEnergyComputations(object):
             reflexive_sim_source, reflexive_sim_outcome)
     
     @staticmethod
-    def _cube_gamma_i_included(cube: torch.Tensor, i: int, normalize=NORMALIZE) -> torch.Tensor:
+    def _cube_gamma_i_included(cube: torch.Tensor, i: int) -> torch.Tensor:
         """The idea is to return only the inversions at a certain index.
         
         For a base `CB` of `M` cases and a new case `i`, computes the inversions involving `i`.
@@ -350,8 +361,8 @@ class MeATCubeEnergyComputations(object):
             # [cannot invert itself] - cube.select(i, dim=-1).select(i, dim=-1).select(i, dim=-1) # gamma_iii
         )
 
-        if normalize:
-            return (inversions).pow(1./3) / (cube.size(-1))
-        else:
-            return inversions
+        return inversions
         
+    @staticmethod
+    def normalize(inversions: int, cb_size: int):
+        (inversions).pow(1./3) / (cb_size.size(-1))
