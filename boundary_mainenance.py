@@ -34,17 +34,23 @@ def class_equality_sim(y1,y2):
     return np.equal(y1,y2).astype(float)
 
 from meatcube2.meatcube_torch import MeATCubeCB
-from meatcube2.CBCompression import CBClassificationMaintainer
+from meatcube2.cb_maintenance import CBClassificationMaintainer
+from meatcube2.ct_coat import CtCoAT
+from meatcube2.ct_coat_naive import CtCoAT as CtCoATNaive
 
 
 names = [
     "Euclidean MeATCube",
     "Euclidean MeATCube increment",
     "Euclidean MeATCube decrement",
+    "CtCoat",
+    "CtCoat increment",
+    "CtCoat decrement",
     # "Cosine MeATCube",
     # "Radius MeATCube",
     # "Correlation MeATCube",
     # "Hamming MeATCube",
+    #"CtCoat non-normalized",
     "Nearest Neighbors",
     "Linear SVM",
     # "RBF SVM",
@@ -56,17 +62,21 @@ classifiers = [
     MeATCubeCB(euclidean_sim, class_equality_sim),
     CBClassificationMaintainer(MeATCubeCB(euclidean_sim, class_equality_sim), mode="increment", patience=10, random_state=42),
     CBClassificationMaintainer(MeATCubeCB(euclidean_sim, class_equality_sim), mode="decrement", patience=10, random_state=42),
+    CtCoAT(euclidean_sim, class_equality_sim),
+    CBClassificationMaintainer(CtCoAT(euclidean_sim, class_equality_sim), mode="increment", patience=10, random_state=42),
+    CBClassificationMaintainer(CtCoAT(euclidean_sim, class_equality_sim), mode="decrement", patience=10, random_state=42),
     # MeATCubeCB(cosine_sim, class_equality_sim),
     # MeATCubeCB(radius_sim, class_equality_sim),
     # MeATCubeCB(correlation_sim, class_equality_sim),
     # MeATCubeCB(hamming_sim, class_equality_sim),
+    #CtCoAT(euclidean_sim, class_equality_sim, normalize=False),
     KNeighborsClassifier(3),
     SVC(kernel="linear", C=0.025, random_state=42),
     # SVC(gamma=2, C=1, random_state=42),
     # GaussianProcessClassifier(1.0 * RBF(1.0), random_state=42),
     # DecisionTreeClassifier(max_depth=5, random_state=42),
 ]
-N_SAMPLES = 200
+N_SAMPLES = 80#0
 
 X, y = make_classification(n_samples=N_SAMPLES, 
     n_features=2, n_redundant=0, n_informative=2, random_state=1, n_clusters_per_class=1
@@ -89,10 +99,10 @@ for ds_cnt, ds in enumerate(datasets):
     # preprocess dataset, split into training and test part
     X, y = ds
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.4, random_state=42
+        X, y, test_size=0.4, random_state=42, stratify=y
     )
     X_train, X_ref, y_train, y_ref = train_test_split(
-        X_train, y_train, test_size=0.4, random_state=42
+        X_train, y_train, test_size=0.4, random_state=42, stratify=y_train
     )
 
     x_min, x_max = X[:, 0].min() - 0.5, X[:, 0].max() + 0.5
@@ -127,14 +137,14 @@ for ds_cnt, ds in enumerate(datasets):
             #clf_ = CBClassificationMaintainer(clf)
             clf = clf.fit(X_train, y_train, X_ref=X_ref, y_ref=y_ref, warm_start=False, increment_init=0.1)
             #clf = clf_.best_estimator_
-            message_bonus = f" |CB|={len(clf)}"
+            message_bonus = f" |CB|: {clf.initial_estimator_len_} -> {len(clf)}"
             # clf_ = CBClassificationMaintainer(clf, mode="increment")
             # clf_ = clf_.fit(X_train, y_train, X_ref=X_ref, y_ref=y_ref, warm_start=False)
             #clf = clf_.best_estimator_
             print(len(clf))
         elif isinstance(clf, MeATCubeCB):
             clf.fit(X_train, y_train)
-            message_bonus = f" |CB|={len(clf)}"
+            message_bonus = f" |CB|: {len(clf)}"
         else:
             clf.fit(X_train, y_train)
             message_bonus = f""

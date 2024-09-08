@@ -32,7 +32,7 @@ NumberOrBool = Union[float, int, bool]
 
 class CtCoAT(ACaseBaseEnergyClassifier):
     """Collection of tensors and metrics that automate the computations of several metrics based on the number of 
-    energies, and supports addition and deletion of cases.
+    inversions, and supports addition and deletion of cases.
     
     Based on MeATCube: (Me)asure of the complexity of a dataset for (A)nalogical (T)ransfer using Boolean (Cube)s, or 
     slices of them.
@@ -72,14 +72,12 @@ class CtCoAT(ACaseBaseEnergyClassifier):
     sim_y: Callable[[OutcomeSpaceElement, OutcomeSpaceElement], float]
     precompute_cube: bool
     precompute_sim_matrix: bool
-    normalize=True
     
     def __init__(self,
                  sim_X: Callable[[SourceSpaceElement, SourceSpaceElement], float],
                  sim_y: Callable[[OutcomeSpaceElement, OutcomeSpaceElement], float],
                  precompute_cube: bool= False,
-                 precompute_sim_matrix: bool= False,
-                 normalize=True):
+                 precompute_sim_matrix: bool= False):
         """
         Parameters
         ----------
@@ -98,7 +96,6 @@ class CtCoAT(ACaseBaseEnergyClassifier):
         self.sim_y = sim_y
         self.precompute_cube = precompute_cube
         self.precompute_sim_matrix = precompute_sim_matrix
-        self.normalize = normalize
         
     def fit(self, 
             X: Iterable[SourceSpaceElement],
@@ -146,16 +143,6 @@ class CtCoAT(ACaseBaseEnergyClassifier):
             classes=self.classes_,
             device=self.device_)
 
-        # Copy the similarity matrices without the row at index nor the row at index (if already initialized)
-        if self.X_sim_matrix_ is not None:
-            updated_meatcube.X_sim_matrix_ = remove_index(self.X_sim_matrix_, index, dims=[-1,-2])
-        if self.y_sim_matrix_ is not None:
-            updated_meatcube.y_sim_matrix_ = remove_index(self.y_sim_matrix_, index, dims=[-1,-2])
-        if self.y_sim_vectors_ is not None:
-            updated_meatcube.y_sim_vectors_ = remove_index(self.y_sim_vectors_, index, dims=[-1])
-        if self.cube_ is not None:
-            updated_meatcube.cube_ = remove_index(self.cube_, index, dims=[-1,-2,-3])
-        
         check_is_fitted(updated_meatcube)
         return updated_meatcube
     
@@ -171,42 +158,7 @@ class CtCoAT(ACaseBaseEnergyClassifier):
             classes=self.classes_,
             device=self.device_)
         
-        # Extend the similarity matrix with the new similarity (if already initialized)
-        if self.X_sim_matrix_ is not None:
-            source_sim_vect = self._source_sim_vect(case_source)
-            source_sim_reflexive = torch.tensor(self.sim_X(case_source, case_source), device=self.device_)
-            updated_meatcube.X_sim_matrix_ = append_symmetric(
-                self.X_sim_matrix_, source_sim_vect, source_sim_reflexive.view(-1))
-        if self.y_sim_matrix_ is not None:
-            outcome_sim_vect = self._outcome_sim_vect(case_outcome)
-            outcome_sim_reflexive = torch.tensor(self.sim_y(case_outcome, case_outcome), device=self.device_)
-            updated_meatcube.y_sim_matrix_ = append_symmetric(
-                self.y_sim_matrix_, outcome_sim_vect, outcome_sim_reflexive.view(-1))
         
-        # Extend the inversion cube with the new energies (if already initialized)
-        if self.X_sim_matrix_ is not None and self.y_sim_matrix_ is not None and self.cube_ is not None:
-            inv_ibc, inv_aic, inv_abi, inv_aii, inv_ibi, inv_iic, inv_iii = CtCoATEnergyComputations._energies_i(
-                self.X_sim_matrix_, self.y_sim_matrix_, # [..., M, M]
-                source_sim_vect, outcome_sim_vect, # [..., M]
-                reflexive_sim_source=source_sim_reflexive, reflexive_sim_outcome=outcome_sim_reflexive, # [...] or []
-                exclude_impossible=False)
-            
-            # from [n, n, n] to [n, n, n+1]
-            updated_meatcube.cube_ = torch.cat([updated_meatcube.cube, inv_abi], dim=-1)
-
-            # from [n, n].[n, 1] to [n, n+1]: add the symmetric component of the vector where the diagonal will be
-            inv_aic = torch.cat([inv_aic, inv_aii.unsqueeze(-1)], dim=-1)
-            # from [n, n, n+1].[n, n+1] to [n, n+1, n+1]
-            updated_meatcube.cube_ = torch.cat([updated_meatcube.cube, inv_aic.unsqueeze(-2)], dim=-2)
-
-            # from [n].[] to [n+1]
-            inv_iic = torch.cat([inv_iic, inv_iii.unsqueeze(-1)], dim=-1)
-            # from [n, n].[n, 1] to [n, n+1] to [n+1, n+1]
-            inv_ibc = torch.cat([inv_ibc, inv_ibi.unsqueeze(-1)], dim=-1)
-            inv_ibc = torch.cat([inv_ibc, inv_iic.unsqueeze(-2)], dim=-2)
-            # from [n, n+1, n+1].[n+1, n+1] to [n+1, n+1, n+1]
-            updated_meatcube.cube_ = torch.cat([updated_meatcube.cube, inv_ibc.unsqueeze(-3)], dim=-3)
-
         check_is_fitted(updated_meatcube)
         return updated_meatcube
     
@@ -218,89 +170,17 @@ class CtCoAT(ACaseBaseEnergyClassifier):
 # TODO: check output shape
 
     def energy_cb(self, as_tensor=False):
-        # self._compute_sim_matrix()
-        
-        # e = 0
-        # for i in range(len(self)):
-        #     for (j,k) in combinations(range(len(self)),2):
-        #         e += (1 - (self.X_sim_matrix_[i,j]-self.X_sim_matrix_[i,k])*(self.y_sim_matrix_[i,j]-self.y_sim_matrix_[i,k]))
-
-        # e = (e + (len(self)^2)/2)/(len(self)^3)
-
-        # if as_tensor: return e
-        # return e.cpu().item()
-        self._compute_inversion_cube()
-        energies = CtCoATEnergyComputations._energy(self.cube_)
-        if self.normalize: energies = CtCoATEnergyComputations.normalize(energies, len(self))
-        if as_tensor: return energies
-        return energies.cpu().item()
-    def energy_case_from_cb(self, index: int, as_tensor=False):
-        if self.cube_ is not None:
-            energies = CtCoATEnergyComputations._cube_gamma_i_included(self.cube_, index)
-        else:
-            self._compute_sim_matrix()
-            energies = CtCoATEnergyComputations._gamma_i_included(self.X_sim_matrix_, self.y_sim_matrix_, index)
-        if self.normalize: energies = CtCoATEnergyComputations.normalize(energies, len(self))
-        if as_tensor: return energies
-        return energies.cpu().item()
-    def energy_case_new(self, X: SourceSpaceElement, y: OutcomeSpaceElement, as_tensor=False) -> float:
         self._compute_sim_matrix()
-        self._compute_outcome_sim_vectors()
-
-        # computes the similarity of the new case to the ones in the CB
-        X_sim_vectors = self._source_sim_vect(X)
-        label_index = self._outcome_index(y)
-        y_sim_vectors = self.y_sim_vectors_.select(-2, label_index)
-        reflexive_sim_X = self._source_sim_reflexive(X)
-        reflexive_sim_y = self._outcome_sim_reflexive(y)
-
-        energies = CtCoATEnergyComputations._gamma_i(self.X_sim_matrix_,
-                                 self.y_sim_matrix_,
-                                 X_sim_vectors,
-                                 y_sim_vectors,
-                                 reflexive_sim_source=reflexive_sim_X,
-                                 reflexive_sim_outcome=reflexive_sim_y)
-        if self.normalize: energies = CtCoATEnergyComputations.normalize(energies, len(self))
-        if as_tensor: return energies
-        return energies.cpu().item()
-    def energy_cases_new(self,
-                         X: Iterable[SourceSpaceElement],
-                         y: Iterable[OutcomeSpaceElement], as_tensor=False) -> torch.FloatTensor:
-        self._compute_sim_matrix()
-        self._compute_outcome_sim_vectors()
-
-        # computes the similarity of the new case to the ones in the CB
-        X_sim_vectors = self._source_sim_vect(X)
-        y_sim_vectors = self._outcome_sim_vect(y)
-        reflexive_sim_X = self._source_sim_reflexive(X)
-        reflexive_sim_y = self._outcome_sim_reflexive(y)
         
-        # add dummy dimensions for broadcasting
-        X_sim_vectors = X_sim_vectors.unsqueeze(-2)
-        y_sim_vectors = y_sim_vectors.unsqueeze(-3)
-        reflexive_sim_X = reflexive_sim_X.unsqueeze(-1)
-        reflexive_sim_y = reflexive_sim_y.unsqueeze(-2)
+        e = 0
+        for i in range(len(self)):
+            for (j,k) in combinations(range(len(self)),2):
+                e += (1 - (self.X_sim_matrix_[i,j]-self.X_sim_matrix_[i,k])*(self.y_sim_matrix_[i,j]-self.y_sim_matrix_[i,k]))
 
-        energies = CtCoATEnergyComputations._gamma_i(self.X_sim_matrix_,
-                                 self.y_sim_matrix_,
-                                 X_sim_vectors,
-                                 y_sim_vectors,
-                                 reflexive_sim_source=reflexive_sim_X,
-                                 reflexive_sim_outcome=reflexive_sim_y)
-        if self.normalize: energies = CtCoATEnergyComputations.normalize(energies, len(self))
-        if as_tensor: return energies
-        return energies.cpu().tolist()
-    
+        e = (e + (len(self)^2)/2)/(len(self)^3)
 
-    def predict_proba(self, X: Iterable[SourceSpaceElement]) -> Iterable[Iterable[float]]:
-        # Check if fit has been called
-        check_is_fitted(self)
-        check_array(X,  accept_sparse=True, dtype=None, ensure_2d=False, allow_nd=False)
-        
-        energies = self.energy_cases_new(X, self.classes_, as_tensor=True)
-        if self.normalize: energies = CtCoATEnergyComputations.normalize(energies, len(self))
-        return (-energies.to(dtype=float)).softmax(-1).cpu().numpy()
-        #return 1 - ((energies.float()-energies.min(dim=-1,keepdim=True).values) / (energies.max(dim=-1,keepdim=True).values-energies.min(dim=-1,keepdim=True).values)).numpy()
+        if as_tensor: return e
+        return e.cpu().item()
     
 ###########################################################
     

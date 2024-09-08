@@ -1,5 +1,10 @@
-import torch, numpy as np
+
+import torch
+import numpy as np
 import pandas as pd
+from typing import Union, Literal, Tuple, Optional, Callable, Generic, TypeVar, Iterable, List
+from scipy.spatial.distance import squareform, pdist, cdist
+from tqdm.auto import tqdm
 
 from sklearn.utils.validation import check_is_fitted
 from sklearn.utils.metaestimators import available_if
@@ -19,6 +24,57 @@ def to_numpy_array(values) -> np.ndarray:
         except ValueError: # non-float array-like
             return np.array(values)
         
+
+
+
+# def torch_cdist():
+#     pass
+
+def pairwise_dist(
+        data: Union[np.ndarray, pd.DataFrame, pd.Series, torch.Tensor],
+        metric,
+        **metric_kwargs):
+    """A wrapper for scipy.spatial.distance.pdist, which handles a torch-based version and an object version."""
+    if isinstance(data, (np.ndarray, pd.DataFrame, pd.Series)):
+        if (data.dtype != object):
+            return pdist(data.reshape(-1,data[0].size), metric=metric)
+        else:
+            n = data.shape[0]
+            out_size = (n * (n - 1)) // 2
+            dm = np.ndarray(dtype=np.double, shape=(out_size,))
+            k = 0
+            for i in range(data.shape[0] - 1):
+                for j in range(i + 1, data.shape[0]):
+                    dm[k] = metric(data[i], data[j], **metric_kwargs)
+                    k += 1
+            return dm
+    elif isinstance(data, torch.Tensor):
+        raise NotImplementedError
+    else:
+        raise ValueError
+def cart_dist(a: Union[np.ndarray, pd.DataFrame, pd.Series, torch.Tensor],
+              b: Union[np.ndarray, pd.DataFrame, pd.Series, torch.Tensor],
+              metric, **metric_kwargs):
+    """A wrapper for scipy.spatial.distance.cdist, which handles a torch-based version and an object version."""
+    if isinstance(a, (np.ndarray, pd.DataFrame, pd.Series)) and isinstance(b, (np.ndarray, pd.DataFrame, pd.Series)):
+        if (a.dtype != object) and (b.dtype != object):
+            return cdist(
+                a.reshape(-1, a[0].size),
+                b.reshape(-1, a[0].size),
+                metric=metric)
+        else:
+            n = a.shape[0]
+            m = b.shape[0]
+            dm = np.ndarray(dtype=np.double, shape=(n, m))
+            for i in range(n - 1):
+                for j in range(m - 1):
+                    dm[i,j] = metric(a[i], b[j], **metric_kwargs)
+            return dm
+    elif isinstance(a, torch.Tensor):
+        raise NotImplementedError
+    else:
+        raise ValueError
+
 class MetaEstimatorScoreMixin(MetaEstimatorMixin):
     
     @available_if(_estimator_has("score_samples"))

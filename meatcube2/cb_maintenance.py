@@ -133,10 +133,12 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
         """
         # init checks
         n_features_in_ = self.estimator._check_X_y(X, y)
-        if self.mode in ("decrement", "increment"):
-            if X_ref is None: raise ValueError(f"{X_ref=} but expected some data to use for current {self.mode=}")
-            if y_ref is None: raise ValueError(f"{y_ref=} but expected some data to use for current {self.mode=}")
-            n_features_in_ = self.estimator._check_X_y(X_ref, y_ref, n_features_in_)
+        if X_ref is None: raise ValueError(f"{X_ref=} but expected some data to use for current {self.mode=}")
+        if y_ref is None: raise ValueError(f"{y_ref=} but expected some data to use for current {self.mode=}")
+        n_features_in_ = self.estimator._check_X_y(X_ref, y_ref, n_features_in_)
+
+        if classes == "infer":
+            classes = np.unique(np.concatenate([np.unique(y), np.unique(y_ref)])).tolist()
 
         # init the CB
         if self.mode == "increment":
@@ -154,6 +156,7 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
             self.estimator = clone(self.estimator)
         if not warm_start: 
             self.estimator.fit(X, y, classes, force_copy=force_copy)
+        self.initial_estimator_len_ = len(self.estimator)
 
         # start the fitting process
         if self.memorize_estimators:

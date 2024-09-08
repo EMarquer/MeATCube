@@ -1,4 +1,7 @@
 import torch
+
+
+import torch
 import numpy as np
 import pandas as pd
 from typing import Union, Literal, Tuple, Optional, Callable, Generic, TypeVar, Iterable, List
@@ -6,39 +9,33 @@ from scipy.spatial.distance import squareform, pdist, cdist
 from tqdm.auto import tqdm
 from .torch_utils import pop_index
 
-NORMALIZE = False
 
-class MeATCubeEnergyComputations(object):
-    """(Me)asure of the complexity of a dataset for (A)nalogical (T)ransfer using Boolean (Cube)s, or slices of them."""
+class CtCoATEnergyComputations(object):
     @staticmethod
     def _energy(cube):
         """The energy of the case base is the """
         e = cube.sum(dim=[-3,-2,-1])
-        return e
+        return CtCoATEnergyComputations.normalize(e)
 
     @staticmethod
     def _inversion_cube(source_sim: torch.Tensor, outcome_sim: torch.Tensor, source_cube: Optional[torch.Tensor]=None,
                    outcome_cube: Optional[torch.Tensor]=None, return_all=False) -> Union[
-                       torch.BoolTensor, Tuple[torch.BoolTensor, torch.BoolTensor, torch.BoolTensor]]:
-        """Computation of the cube of inversions for the Γ indicator.
+                       torch.FloatTensor, Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]]:
+        """Computation of the cube of energies for the Γ indicator.
         
         :param source_sim:  Tensor with coordinates `[a, b]` for `σs(a,b)`.
         :param outcome_sim: Tensor with coordinates `[a, b]` for `σr(a,b)`.
         :param return_all: If true, instead of returning only the inversion cube, returns the comparison cube for the 
         source and the outcome similarities.
-        :return: Boolean tensor with coordinates `[a,b,c]` for `σs(a,b) ≥ σs(a,c) ∧ σr(a,b) < σr(a,c)`.
+        :return: Float tensor with coordinates `[a,b,c]` for `1 - (σs(a,b) - σs(a,c)*(σr(a,b) - σr(a,c))`.
         """
-        #n = source_sim.size(0)
-        #self.s_cube = source_sim.view((n, n, 1)) >= source_sim.view((n, 1, n))
-        #self.o_cube = outcome_sim.view((n, n, 1)) < outcome_sim.view((n, 1, n))
-
         # compute only if necessary
-        if source_cube is None: source_cube = MeATCubeEnergyComputations._cubify(source_sim, "source")
-        if outcome_cube is None: outcome_cube = MeATCubeEnergyComputations._cubify(outcome_sim, "outcome")
+        if source_cube is None: source_cube = CtCoATEnergyComputations._cubify(source_sim, "source")
+        if outcome_cube is None: outcome_cube = CtCoATEnergyComputations._cubify(outcome_sim, "outcome")
 
         if source_cube.dim() == 3 & outcome_cube.dim() == 4: source_cube.unsqueeze(0)
         elif source_cube.dim() == 4 & outcome_cube.dim() == 3: outcome_cube.unsqueeze(0)
-        cube = source_cube & outcome_cube
+        cube = 1 - torch.mul(source_cube, outcome_cube)
 
         if return_all:
             return cube, source_cube, outcome_cube
@@ -46,24 +43,21 @@ class MeATCubeEnergyComputations(object):
             return cube
 
     @staticmethod
-    def _cubify(sim_matrix: torch.Tensor, comparator: Literal["source","outcome"]="source") -> torch.BoolTensor:
+    def _cubify(sim_matrix: torch.Tensor) -> torch.BoolTensor:
         """Transform the similarity matrix into a cube (or an array of cubes), based on a provided comparator.
 
         If `sim_matrix` is of size `[M, M]`, `M` the number of cases, it should use the coordinates `[a, b]` for the 
         similarity `σ(a, b)`. Then, the output will be of size `[M, M, M]` with coordinates `[a, b, c]` for:
-        - `σ(a, b) >= σ(a, c)` if comparator is 'source';
-        - `σ(a, b) < σ(a, c)` if comparator is 'outcome'.
+        - `σ(a, b) - σ(a, c)`.
 
         If `sim_matrix` is of size `[O, M, M]`, `M` the number of cases and `O` the number of outcomes, it should use 
         the coordinates `[o, a, b]` for the similarity :math:`σ(a, b)` given the outcome `o`. Then, the output will be
         of size `[M, M, M]` with coordinates `[o, a, b, c]` for:
-        - `σ(a, b) >= σ(a, c)` given the outcome `o` if comparator is 'source';
-        - `σ(a, b) < σ(a, c)` given the outcome `o` if comparator is 'outcome'.
+        - `σ(a, b) - σ(a, c)` given the outcome `o`.
 
         Generalizes for shape `[..., M, M]` with `...` any number of dimensions.
 
         :param sim_matrix: Tensor of the similarity matrix or stack of similarity matrices.
-        :param comparator: Either 'source' or 'outcome'.
         :return: Tensor containing the cube (or an array of cubes) of boolean values.
         """
         comparator = (lambda ab, ac: ab >= ac) if comparator=="source" else (lambda ab, ac: ab < ac)
@@ -71,11 +65,8 @@ class MeATCubeEnergyComputations(object):
             # sim_matrix: [M, M]
             # cube: [M, M, M], coordinates [a, b, c], `a` the anchor
             # works by reshaping sim_matrix as follows
-            # comparator([dim anchor, dim a, . ], [dim anchor, . , dim b])
-            
-            #cube = comparator(sim_matrix.view((m, m, 1)), sim_matrix.view((m, 1, m)))
-            #cube = comparator(sim_matrix.view((o, m, m, 1)), sim_matrix.view((o, m, 1, m)))
-            cube = comparator(sim_matrix.unsqueeze(-1), sim_matrix.unsqueeze(-2))
+            # [dim anchor, dim a, . ] - [dim anchor, . , dim b]
+            cube = sim_matrix.unsqueeze(-1) - sim_matrix.unsqueeze(-2)
         else:
             raise ValueError(f"Unsupported cubification of a matrix of size {sim_matrix.size()}: only works with at" 
                              "least 2 dimensions, with the last two of equal size.")
@@ -83,13 +74,13 @@ class MeATCubeEnergyComputations(object):
         return cube
     
     @staticmethod
-    def _inversions_i(sim_source, sim_outcome, new_sim_source, new_sim_outcome,
+    def _energies_i(sim_source: torch.Tensor, sim_outcome: torch.Tensor, new_sim_source: torch.Tensor, new_sim_outcome: torch.Tensor,
                       reflexive_sim_source=1, reflexive_sim_outcome=1, exclude_impossible=True) -> (
             Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]):
 
-        """The idea is to compute the inversions for every possible outcome, and make the choice of the right one only afterwards.
+        """The idea is to compute the energies for every possible outcome, and make the choice of the right one only afterwards.
         
-        For a base `CB` of `M` cases and a new case `i`, computes the inversions involving `i`.
+        For a base `CB` of `M` cases and a new case `i`, computes the energies involving `i`.
         Generalizes for any dimensions `...`, that can range from 0 dimensions (for the basic Γi) to any number of 
         dimensions for parallel computations. Sizes of the dimensions `...` may differ between the inputs, but most be 
         broadcast-able.
@@ -120,32 +111,32 @@ class MeATCubeEnergyComputations(object):
         sii=reflexive_sim_source  # [...] or []
         oii=reflexive_sim_outcome  # [...] or []
         # gamma_ibc: [..., M, 1] . [..., 1, M] -> [..., M, M]
-        inv_ibc = ((si.unsqueeze(-1) >= si.unsqueeze(-2)) &
-                     (oi.unsqueeze(-1) < oi.unsqueeze(-2)))
+        inv_ibc = 1 - torch.mul((si.unsqueeze(-1) - si.unsqueeze(-2)),
+                     (oi.unsqueeze(-1) - oi.unsqueeze(-2)))
         # gamma_aic: [..., M, 1] . [..., M, M] -> [..., M, M]
-        inv_aic = ((si.unsqueeze(-1) >= s) &
-                     (oi.unsqueeze(-1) < o))
+        inv_aic = 1 - torch.mul((si.unsqueeze(-1) - s),
+                     (oi.unsqueeze(-1) - o))
         # gamma_abi: [..., M, M] . [..., M, 1] -> [..., M, M]
-        inv_abi = ((s >= si.unsqueeze(-1)) &
-                     (o < oi.unsqueeze(-1)))
+        inv_abi = 1 - torch.mul((s - si.unsqueeze(-1)),
+                     (o - oi.unsqueeze(-1)))
         
         if isinstance(sii, torch.Tensor) and sii.dim() == si.dim() - 1:
             sii = sii.unsqueeze(-1)
         if isinstance(oii, torch.Tensor) and oii.dim() == oi.dim() - 1:
             oii = oii.unsqueeze(-1)
         # gamma_ibi: [..., M] . [] -> [..., M]
-        inv_ibi = ((si >= sii) &
-                    (oi < oii))
+        inv_ibi = 1 - torch.mul((si - sii),
+                    (oi - oii))
         # gamma_iic: [] . [..., M] -> [..., M]
-        inv_iic = ((sii >= si) & 
-                    (oii < oi))
+        inv_iic = 1 - torch.mul((sii - si), 
+                    (oii - oi))
         
         if exclude_impossible:
-            inv_aii = 0 # cannot invert itself
-            inv_iii = 0 # cannot invert itself, special case of gamma_aii
+            inv_aii = 1 - 0 # cannot invert itself
+            inv_iii = 1 - 0 # cannot invert itself, special case of gamma_aii
         else:
-            inv_aii = torch.zeros_like(inv_iic)
-            inv_iii = torch.zeros_like(inv_iic.select(-1, 0))
+            inv_aii = 1 - torch.zeros_like(inv_iic)
+            inv_iii = 1 - torch.zeros_like(inv_iic.select(-1, 0))
 
         return inv_ibc, inv_aic, inv_abi, inv_aii, inv_ibi, inv_iic, inv_iii
 
@@ -156,9 +147,9 @@ class MeATCubeEnergyComputations(object):
                  new_sim_outcome: torch.Tensor,
                  reflexive_sim_source: Union[float, torch.Tensor]=1, 
                  reflexive_sim_outcome: Union[float, torch.Tensor]=1) -> torch.Tensor:
-        """The idea is to compute the inversions for every possible outcome, and make the choice of the right one only afterwards.
+        """The idea is to compute the energies for every possible outcome, and make the choice of the right one only afterwards.
         
-        For a base `CB` of `M` cases and a new case `i`, computes the inversions involving `i`.
+        For a base `CB` of `M` cases and a new case `i`, computes the energies involving `i`.
         Generalizes for any dimensions `...`, that can range from 0 dimensions (for the basic Γi) to any number of 
         dimensions for parallel computations. Sizes of the dimensions `...` may differ between the inputs, but most be 
         broadcast-able.
@@ -179,7 +170,7 @@ class MeATCubeEnergyComputations(object):
 
         :return: The competence of `CB` w.r.t the case `i`.
         """
-        inv_ibc, inv_aic, inv_abi, inv_aii, inv_ibi, inv_iic, inv_iii = MeATCubeEnergyComputations._inversions_i(
+        inv_ibc, inv_aic, inv_abi, inv_aii, inv_ibi, inv_iic, inv_iii = CtCoATEnergyComputations._energies_i(
             sim_source, sim_outcome, # [..., M, M]
             new_sim_source, new_sim_outcome, # [..., M]
             reflexive_sim_source=reflexive_sim_source, reflexive_sim_outcome=reflexive_sim_outcome, # [...] or []
@@ -201,9 +192,9 @@ class MeATCubeEnergyComputations(object):
     
     @staticmethod
     def _gamma_i_included(sim_source, sim_outcome, i) -> torch.Tensor:
-        """The idea is to compute the inversions for every possible outcome, and make the choice of the right one only afterwards.
+        """The idea is to compute the energies for every possible outcome, and make the choice of the right one only afterwards.
         
-        For a base `CB` of `M` cases and a new case `i`, computes the inversions involving `i`.
+        For a base `CB` of `M` cases and a new case `i`, computes the energies involving `i`.
         Generalizes for any dimensions `...`, that can range from 0 dimensions (for the basic Γi) to any number of 
         dimensions for parallel computations. Sizes of the dimensions `...` may differ between the inputs, but most be 
         broadcast-able.
@@ -224,16 +215,16 @@ class MeATCubeEnergyComputations(object):
         new_sim_source, reflexive_sim_source=pop_index(new_sim_source, i, dim=-1)  # [..., M], [...]
         new_sim_outcome, reflexive_sim_outcome=pop_index(new_sim_outcome, i, dim=-1)  # [..., M], [...]
 
-        return MeATCubeEnergyComputations._gamma_i(
+        return CtCoATEnergyComputations._gamma_i(
             sim_source, sim_outcome,
             new_sim_source, new_sim_outcome,
             reflexive_sim_source, reflexive_sim_outcome)
     
     @staticmethod
     def _cube_gamma_i_included(cube: torch.Tensor, i: int) -> torch.Tensor:
-        """The idea is to return only the inversions at a certain index.
+        """The idea is to return only the energies at a certain index.
         
-        For a base `CB` of `M` cases and a new case `i`, computes the inversions involving `i`.
+        For a base `CB` of `M` cases and a new case `i`, computes the energies involving `i`.
         Generalizes for any dimensions `...`, that can range from 0 dimensions (for the basic Γi) to any number of 
         dimensions for parallel computations. Sizes of the dimensions `...` may differ between the inputs, but most be 
         broadcast-able.
@@ -244,7 +235,7 @@ class MeATCubeEnergyComputations(object):
 
         :return: The competence of `CB` w.r.t the case `i`.
         """
-        inversions = (
+        energies = (
             (cube.select(index=i, dim=-1).sum(dim=[-1,-2]) + # gamma_abi
              cube.select(index=i, dim=-2).sum(dim=[-1,-2]) + # gamma_aic
              cube.select(index=i, dim=-3).sum(dim=[-1,-2]))  # gamma_ibc
@@ -254,8 +245,12 @@ class MeATCubeEnergyComputations(object):
             # [cannot invert itself] - cube.select(i, dim=-1).select(i, dim=-1).select(i, dim=-1) # gamma_iii
         )
 
-        return inversions
+        return energies
         
     @staticmethod
-    def normalize(inversions: int, cb_size: int):
-        (inversions).pow(1./3) / (cb_size.size(-1))
+    def normalize(e: int, cb_size: int):
+
+        # (e + (n^2)/2)/(n^3) = e/(n^3) + ((n^2)/2)/(n^3) = e/(n^3) + (1/2n)
+        #e = (e + (cube.size(-1)^2)/2)/(cube.size(-1)^3) # (e + (n^2)/2)/(n^3)
+        e = (e/(cb_size^3)) + (1/(2*cb_size)) # e/(n^3) + (1/2n)
+        return e

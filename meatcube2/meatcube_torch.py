@@ -12,14 +12,16 @@ from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 from meatcube2.AbstractEnergyBasedPredictor import ACaseBaseEnergyPredictor
 
 try:
-    from .meatcube_torch_functional import MeATCubeEnergyComputations, remove_index, append_symmetric, NORMALIZE, pairwise_dist, cart_dist
-    from .utils import to_numpy_array
+    from .meatcube_torch_functional import MeATCubeEnergyComputations, NORMALIZE
+    from .utils import to_numpy_array, pairwise_dist, cart_dist
+    from .torch_utils import remove_index, append_symmetric
     from .defaults import MEATCUBE_COMPETENCE_NORMALIZE_BY_MAX_COMPETENCE
     from .AbstractEnergyBasedClassifier import ACaseBaseEnergyClassifier, SourceSpaceElement, OutcomeSpaceElement
 except ImportError as e:
     try:
-        from meatcube_torch_functional import MeATCubeEnergyComputations, remove_index, append_symmetric, NORMALIZE, pairwise_dist, cart_dist
-        from utils import to_numpy_array
+        from meatcube_torch_functional import MeATCubeEnergyComputations, NORMALIZE
+        from torch_utils import remove_index, append_symmetric
+        from utils import to_numpy_array, pairwise_dist, cart_dist
         from defaults import MEATCUBE_COMPETENCE_NORMALIZE_BY_MAX_COMPETENCE
         from AbstractEnergyBasedClassifier import ACaseBaseEnergyClassifier, SourceSpaceElement, OutcomeSpaceElement
     except ImportError:
