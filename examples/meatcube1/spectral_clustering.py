@@ -20,7 +20,7 @@ USE_STRING_VALUES = False
 #     y_values = np.unique(y)
 import sys, os
 df: pd.DataFrame = pd.read_csv(
-    os.path.join(os.path.dirname(__file__), 'example_data', "doughnut_25_50_5_1000.csv"),
+    os.path.join(os.path.dirname(__file__), '..', 'example_data', "doughnut_25_50_5_1000.csv"),
     header=None, index_col=None)
 df.columns = ["x", "y", "target"]
 X: pd.DataFrame = df[["x", "y"]] # source
@@ -34,7 +34,7 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=100, train_s
 
 # add root directory to be able to import MeATCube
 import sys, os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 import meatcube as mc
 
 # create the CB

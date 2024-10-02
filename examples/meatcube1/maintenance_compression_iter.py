@@ -24,7 +24,7 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=100, random_
 
 # add root directory to be able to import MeATCube
 import sys, os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 import meatcube as mc
 from meatcube.metrics import f1_score, precision_recall_fscore_support, accuracy
 from meatcube.maintenance import decrement_early_stopping

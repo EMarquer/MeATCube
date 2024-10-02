@@ -1,7 +1,6 @@
 from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score
-from sklearn.decomposition import PCA, KernelPCA, IncrementalPCA
 import pandas as pd
 import numpy as np
 
@@ -25,7 +24,7 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=100, random_
 
 # add root directory to be able to import MeATCube
 import sys, os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 import meatcube as mc
 
 # create the CB
@@ -33,6 +32,12 @@ source_similarity = lambda x,y: np.exp(- np.linalg.norm(x - y))
 outcome_similarity = lambda x,y: (True if x == y else False)
 cb = mc.CB(X_train, y_train, y_values, source_similarity, outcome_similarity)
 
-# compute the prediction confidence for each case in the test set
-from meatcube.metrics import confidence
-confidence(cb, X_test, keepdim=False)
+# predict one
+y_pred_0 = cb.predict(X_test.iloc[0])
+
+# predict multiple
+y_pred = cb.predict(X_test)
+
+# evaluate
+f1 = f1_score(y_test, y_pred, average="macro")
+print(f"Iris dataset --- F1 score: {f1:%} ({X_train.shape[0]} cases in the CB, {X_test.shape[0]} cases in the test set)")

@@ -1,10 +1,12 @@
+# %%
 from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score
+from sklearn.decomposition import PCA, KernelPCA, IncrementalPCA
 import pandas as pd
 import numpy as np
 
-USE_STRING_VALUES = False
+USE_STRING_VALUES = True
 
 iris = load_iris(as_frame=True)
 
@@ -18,13 +20,12 @@ if USE_STRING_VALUES:
 else:
     y_values = np.unique(y)
 
-
 # stratified splitting of the data
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=100, random_state=42, stratify=y)
 
 # add root directory to be able to import MeATCube
 import sys, os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 import meatcube as mc
 
 # create the CB
@@ -32,12 +33,21 @@ source_similarity = lambda x,y: np.exp(- np.linalg.norm(x - y))
 outcome_similarity = lambda x,y: (True if x == y else False)
 cb = mc.CB(X_train, y_train, y_values, source_similarity, outcome_similarity)
 
-# predict one
-y_pred_0 = cb.predict(X_test.iloc[0])
+from meatcube.plotting.preprocessing import prepare_ax
+from meatcube.plotting.energymap import energymap
+import matplotlib.pyplot as plt
 
-# predict multiple
-y_pred = cb.predict(X_test)
+# Ex 1: plotting the energymap
+energymap(cb, X)
+plt.show()
+plt.clf()
 
-# evaluate
-f1 = f1_score(y_test, y_pred, average="macro")
-print(f"Iris dataset --- F1 score: {f1:%} ({X_train.shape[0]} cases in the CB, {X_test.shape[0]} cases in the test set)")
+# Ex 2: plotting the energy map, and plot the cb on top
+from meatcube.plotting.cbscatter import plot_cb, plot_ref
+ax, transform = prepare_ax(cb, X)
+energymap(cb, transform=transform, ax=ax)
+plot_cb(cb, alpha=0.5, transform=transform, ax=ax)
+plot_ref(cb, X_test, y_test, cb.predict(X_test), alpha=0.5, transform=transform, ax=ax)
+plt.show()
+plt.clf()
+# %%

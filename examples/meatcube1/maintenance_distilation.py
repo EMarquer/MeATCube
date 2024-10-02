@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 
 USE_STRING_VALUES = True
+RUN_EXAMPLE = 0 # 0 for all examples, or example number
 
 iris = load_iris(as_frame=True)
 
@@ -23,10 +24,10 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=100, random_
 
 # add root directory to be able to import MeATCube
 import sys, os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 import meatcube as mc
 from meatcube.metrics import f1_score, precision_recall_fscore_support, accuracy
-from meatcube.maintenance import decrement, decrement_early_stopping
+from meatcube.maintenance import fancy_distillation_process
 
 # create the CB
 source_similarity = lambda x,y: np.exp(- np.linalg.norm(x - y))
@@ -37,28 +38,16 @@ cb = mc.CB(X_train, y_train, y_values, source_similarity, outcome_similarity)
 f1, acc = f1_score(cb, X_test, y_test), accuracy(cb, X_test, y_test)
 print(f"Initial performance of the CB: F1 {f1}, Accuracy {acc}")
 
-
-
-# remove 1 case from the initial CB
-cb_minus_1, competences, result_index = decrement(cb, X_test, y_test,
+# --- Example 1 ---
+# repeat removals (1 by 1) until nothing remains in the CB
+print(f"Example: Repeat removals until nothing remains in the CB")
+cb_ = fancy_distillation_process(cb, X_test, y_test,
                 strategy="hinge",
-                margin=0.1,
-                k=1,
-                return_all=True)
-f1, acc = f1_score(cb_minus_1, X_test, y_test), accuracy(cb_minus_1, X_test, y_test)
-print(f"Removed case {cb[result_index][0]} -> {cb[result_index][1]} which had a competence of {competences[result_index]}")
-print(f"New performance of the CB: F1 {f1}, Accuracy {acc}")
+                monitor="hinge",
+                register=["F1", "accuracy"],
+                margin=0,
+                step_size=1,
+                patience=len(cb))
+f1, acc = f1_score(cb_, X_test, y_test), accuracy(cb_, X_test, y_test)
+print(f"Final performance of the CB: F1 {f1}, Accuracy {acc} with a CB of size {len(cb_)}")
 
-
-
-# remove 10 cases from the initial CB
-cb_minus_10, competences, result_index = decrement(cb, X_test, y_test,
-                strategy="hinge",
-                margin=0.1,
-                k=10,
-                return_all=True)
-f1, acc = f1_score(cb_minus_10, X_test, y_test), accuracy(cb_minus_10, X_test, y_test)
-print(f"Removed 10 cases:")
-for result_idx in result_index:
-    print(f"- {cb[result_idx][0]} -> {cb[result_idx][1]} which had a competence of {competences[result_idx]}")
-print(f"New performance of the CB: F1 {f1}, Accuracy {acc}")
