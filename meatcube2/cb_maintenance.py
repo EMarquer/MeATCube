@@ -28,7 +28,7 @@ from sklearn.model_selection import train_test_split
 
 from copy import deepcopy as clone
 
-from .AbstractEnergyBasedClassifier import ACaseBaseEnergyClassifier, OutcomeSpaceElement, SourceSpaceElement
+from .models.AbstractEnergyBasedClassifier import ACaseBaseEnergyClassifier, OutcomeSpaceElement, SourceSpaceElement
 
 class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
     _required_parameters = ["estimator"]
@@ -39,7 +39,7 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
                  estimator: ACaseBaseEnergyClassifier,
                  memorize_estimators: bool=False,
                  scoring: Union[str, callable]=None,
-                 patience: int=3,
+                 patience: int=-1,
                  mode: Literal["decrement", "increment"]="decrement",
                  random_state=42,
             ):
@@ -75,9 +75,9 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
     def fit(self,
             X: Iterable[SourceSpaceElement],
             y: Iterable[OutcomeSpaceElement],
+            X_ref: Iterable[OutcomeSpaceElement],
+            y_ref: Iterable[OutcomeSpaceElement],
             classes: List[OutcomeSpaceElement]="infer",
-            X_ref: Optional[Iterable[OutcomeSpaceElement]]=None,
-            y_ref: Optional[Iterable[OutcomeSpaceElement]]=None,
             #mode: Literal["init", "decrement", "increment"]="init",
             increment_init: Optional[Union[int, Iterable[int], slice]]=None,
             n_iter: Optional[int]=None,
@@ -201,7 +201,7 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
 
             # if enough iterations have been performed, check if the performance has improved in the last `patience` 
             # iterations` 
-            if len(self.scores_) >= self.patience and max(self.scores_[-self.patience-1:-1]) > self.scores_[-1]:
+            if self.patience >= 0 and len(self.scores_) >= self.patience and max(self.scores_[-self.patience-1:-1]) > self.scores_[-1]:
                 break
         
 
