@@ -11,7 +11,7 @@ from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 
 from meatcube2.models.AbstractEnergyBasedPredictor import ACaseBaseEnergyPredictor
 
-from .meatcube_torch_functional import MeATCubeEnergyComputations, NORMALIZE
+from .meatcube_torch_backend import MeATCubeEnergyComputations, NORMALIZE
 from ..utils import to_numpy_array, pairwise_dist, cart_dist
 from ..torch_utils import remove_index, append_symmetric
 from ..defaults import MEATCUBE_COMPETENCE_NORMALIZE_BY_MAX_COMPETENCE
@@ -276,6 +276,7 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
         return inversions.cpu().tolist()
     
 ###########################################################
+
     '''
 
     def predict_proba(self, X: Iterable[SourceSpaceElement], candidate_classes=None) -> Iterable[Iterable[float]]:

@@ -167,7 +167,7 @@ class CtCoAT(ACaseBaseEnergyClassifier):
             for (j,k) in combinations(range(len(self)),2):
                 e += (1 - (self.X_sim_matrix_[i,j]-self.X_sim_matrix_[i,k])*(self.y_sim_matrix_[i,j]-self.y_sim_matrix_[i,k]))
 
-        e = (e + (len(self)^2)/2)/(len(self)^3)
+        e = (e + (len(self)**2)/2)/(len(self)**3)
 
         if as_tensor: return e
         return e.cpu().item()

@@ -230,6 +230,12 @@ class ACaseBaseEnergyClassifier(BaseEstimator, ClassifierMixin, ACaseBaseEnergyP
         # compute the energies
         energies = self.energy_cases_new(X, candidate_classes, as_tensor=True)
         
+        if torch.isinf(energies).any():
+            print(type(self))
+            print(energies.cpu().tolist())
+            print(np.isnan(energies.cpu().tolist()).any(), np.isinf(energies.cpu().tolist()).any())
+            raise ValueError()
+        
         # get class/outcome indices minimizing the energy
         if isinstance(energies, torch.Tensor): 
             min_index = energies.argmin(dim=-1).cpu().numpy() # failsafe if energy_cases_new returns a tensor
@@ -416,3 +422,102 @@ class ACaseBaseEnergyClassifier(BaseEstimator, ClassifierMixin, ACaseBaseEnergyP
         return self._X[index], self._y[index]
     def __len__(self) -> int:
         return max(len(self._X), len(self._y))
+
+    def loss_cb(self,
+            test_cases_sources: Iterable[SourceSpaceElement],
+            test_cases_outcomes: Iterable[OutcomeSpaceElement],
+            strategy: Literal["MCE", "hinge"]="hinge",
+            margin: float=0.1,
+            aggregation: Literal[None, "none", "sum", "mean"] | Callable[Iterable[float], float]="mean",
+            **kwargs) -> Union[float, List[float]]:
+        """Compute the loss `L(CB, T)` of the case base `CB` w.r.t a test set `T`.
+
+        `-L(CB, T)` is the competence `C(CB, T)` of the case base `CB` w.r.t a test set `T`.
+        
+        Higher values correspond to less desirable case/outcome combinations.
+
+        
+        Warning
+        -------
+        Since Sept. 2024, behavior has been changed to have the loss as the inverse of competence (as it should be) 
+        because higher competence are more desirable, while lower losses are more desirable.
+        Also, `C(CB, T)` was changed to `L(CB, T)` to reflect the changes to `ℓ(CB, cₜ)`.
+
+        Parameters
+        ----------
+        aggregation : Literal[None, "none", "sum", "mean"] | Callable[list[float], float] (default="mean")
+            If `aggregation` = "mean", use the mean of expertises over `T`:
+            `L(CB, T) = 1/|T| (∑_{cₜ ∈ T} ℓ(CB, cₜ))`
+
+            If `aggregation` = "sum", use the sum of expertises over `T`:
+            `L(CB, T) = ∑_{cₜ ∈ T} ℓ(CB, cₜ)`
+
+            If `aggregation` = "none" or `aggregation` = `None`, return the individual expertises of `CB` over `T`:
+            `L(CB, T) = [ℓ(CB, cₜ) for cₜ ∈ T]`
+
+            If `aggregation` is callable, it is called on the list of expertises:
+            `L(CB, T) = aggregation([ℓ(CB, cₜ) for cₜ ∈ T])`
+
+        strategy : "MCE" | "hinge" (default="hinge")
+            If `strategy` = "MCE", use the minimum classification error loss:
+            `ℓ(CB, cₜ) = ℓmce(CB, cₜ) = E(CB ∪ {(sₜ, rₜ)})) - (min_{rₜ' ≠ rₜ}E(CB ∪ {(sₜ, rₜ')}))`.
+
+            If `strategy` = "hinge", use the hinge loss (hinge competence = - hinge loss):
+            `ℓ(CB, cₜ) = max(0, λ + ℓmce(CB, cₜ))`.
+
+            To implement another loss functional, override this method.
+        margin : float 
+            If `strategy` = "hinge", `margin` corresponds to the `λ` parameter.
+
+        Returns
+        -------
+        The value of of the loss `L(CB, T)`
+        """
+
+        # implementation that assumes the prediction of multiple cases is optimized
+        predicted_outcomes, ids, energies = self.predict_multiple(
+            test_cases_sources,
+            self.classes_,
+            return_id=True,
+            return_energies=True)
+        
+        # assume the gold outcome is predicted
+        sorted_energies = np.sort(energies, axis=-1)
+        gold_energies, next_best_energies = sorted_energies[:,0], sorted_energies[:,1]
+
+        # find where the predicted outcome is not the gold
+        # in those cases, the energy of the gold is not the best predicted energy, so the value in gold_energies is the 
+        # one of the next best outcome and the value in gold_energies must be replaced
+        fail_mask = np.not_equal(test_cases_outcomes, predicted_outcomes)
+        if fail_mask.any():
+            next_best_energies[fail_mask] = gold_energies[fail_mask]
+            # if the gold outcome is among known outcomes, find and use the corresponding energy
+            known_mask = np.vectorize(self.classes_.__contains__)(test_cases_outcomes[fail_mask])
+            if np.count_nonzero(known_mask) > 0:
+                gold_ids = np.vectorize(self.classes_.index)(test_cases_outcomes[fail_mask][known_mask])
+                gold_energies[fail_mask][known_mask] = energies[fail_mask][known_mask,gold_ids]
+            # if the gold outcome is not among known outcomes, predict the corresponding energy
+            if np.count_nonzero(~known_mask) > 0: 
+                gold_energies[fail_mask][known_mask] = np.fromiter(
+                    self.energy_case_new(X_, y_) for X_, y_ in zip(test_cases_sources[fail_mask][known_mask], test_cases_outcomes[fail_mask][known_mask])
+                )
+
+        # from the energies, we can now compute the MCE:
+        mce = gold_energies - next_best_energies
+
+        # prepare the aggregation function
+        if aggregation == "mean":
+            aggregation = np.mean
+        elif aggregation == "sum":
+            aggregation = np.sum
+        elif aggregation == "none" or aggregation is None or not callable(aggregation):
+            aggregation = lambda x: x # no aggregation
+
+        # return the MCE
+        if strategy == "MCE": 
+            return aggregation(mce)
+        
+        # use the element-wise MCE to obtain the hinge, and return it
+        elif strategy == "hinge":
+            hinge = np.maximum(0, margin + mce)
+            return aggregation(hinge)

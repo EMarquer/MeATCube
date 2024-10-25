@@ -252,5 +252,5 @@ class CtCoATEnergyComputations(object):
 
         # (e + (n^2)/2)/(n^3) = e/(n^3) + ((n^2)/2)/(n^3) = e/(n^3) + (1/2n)
         #e = (e + (cube.size(-1)^2)/2)/(cube.size(-1)^3) # (e + (n^2)/2)/(n^3)
-        e = (e/(cb_size^3)) + (1/(2*cb_size)) # e/(n^3) + (1/2n)
+        e = (e/(cb_size**3)) + (1/(2*cb_size)) # e/(n^3) + (1/2n)
         return e

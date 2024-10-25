@@ -9,7 +9,7 @@ import operator
 import time
 import warnings
 
-from typing import Union, List, Optional, Tuple, Literal
+from typing import Union, List, Optional, Tuple, Literal, Any
 from typing_extensions import Self
 
 import numpy as np
@@ -29,16 +29,19 @@ from sklearn.model_selection import train_test_split
 from copy import deepcopy as clone
 
 from .models.AbstractEnergyBasedClassifier import ACaseBaseEnergyClassifier, OutcomeSpaceElement, SourceSpaceElement
+from .metrics import clf_prediction_summary
+from .utils import catchtime
 
 class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
     _required_parameters = ["estimator"]
     estimator: ACaseBaseEnergyClassifier
-    refit = True
+    refit = None
 
     def __init__(self,
                  estimator: ACaseBaseEnergyClassifier,
                  memorize_estimators: bool=False,
-                 scoring: Union[str, callable]=None,
+                 scoring: Union[str, callable]=clf_prediction_summary,
+                 refit: str="accuracy",
                  patience: int=-1,
                  mode: Literal["decrement", "increment"]="decrement",
                  random_state=42,
@@ -49,13 +52,18 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
         ----------
         random_state :
             Only impacts `mode`=="increment" when explicit indices or slice are not given to initialize the process.
-        scoring : str | callable (default=None)
+        scoring : str | callable (default=metrics.clf_prediction_summary) (sklearn argument)
             Strategy to evaluate the performance of the cross-validated model on the test set.
 
             If scoring represents a single score, one can use:
                 - a single string (see The scoring parameter: defining model evaluation rules);
 
                 - a callable (see Defining your scoring strategy from metric functions) that returns a single value.
+        refit : callable, default=score (sklearn argument)
+            By analogy with the refit parameter of GridSearchCV.
+
+            For multiple metric evaluation, this needs to be a str denoting the scorer that would be used to find the 
+            best parameters for the estimator at the end.
         patience : int (default=-1) (sklearn argument)
             If `mode`=="decrement" or `mode`=="increment", `patience` is the maximum number of iterations of the 
             decremental (or incremental) process that we wait once no improvement on the score is observed.
@@ -68,6 +76,7 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
         self.estimator =estimator 
         self.memorize_estimators=memorize_estimators
         self.scoring = check_scoring(estimator, scoring)
+        self.refit = refit
         self.patience = patience
         self.mode = mode
         self.random_state = random_state
@@ -164,7 +173,22 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
             self.best_estimator_ = self.estimators_[0]
         else:
             self.best_estimator_ = clone(self.estimator)
-        self.scores_ = [self.estimator.score(X_ref, y_ref)]
+
+        self.results_ = []
+        def get_score_to_watch():
+            with catchtime() as t:
+                score = self.scoring(self.estimator, X_ref, y_ref)
+            scores = {
+                "eval_time": t(),
+                "step": len(self.results_),
+                "CB_size": len(self.estimator)}
+            if isinstance(score, dict) and self.refit:
+                self.results_.append({**score, **scores})
+                return self.results_[-1][self.refit]
+            else:
+                self.results_.append({"score": score, **scores})
+                return self.results_[-1]["score"]
+        self.scores_ = [get_score_to_watch()]
         self.best_score_ = self.scores_[0]
         self.best_index_ = 0
         check_is_fitted(self.estimator)
@@ -182,13 +206,15 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
 
         for i in range(n_iter):
             # update the estimator
-            if self.mode == "decrement":
-                self.decrement(X_ref=X_ref, y_ref=y_ref, inplace=True, **loss_kwargs)
-            elif self.mode == "increment":
-                self.increment(X_unused, y_unused, X_ref, y_ref, inplace=True, **loss_kwargs)
+            with catchtime() as t:
+                if self.mode == "decrement":
+                    _, idx, _ = self.decrement(X_ref=X_ref, y_ref=y_ref, inplace=True, **loss_kwargs)
+                elif self.mode == "increment":
+                    _, idx, _ = self.increment(X_unused, y_unused, X_ref, y_ref, inplace=True, **loss_kwargs)
 
             # evaluate the latest model and update best model
-            self.scores_.append(self.score(X_ref, y_ref))
+            self.scores_.append(get_score_to_watch())
+            self.results_[-1]["fit_time"] = t()
             if self.memorize_estimators:
                 self.estimators_.append(self.estimator)
             if self.scores_[-1] > self.best_score_: # update best model
@@ -211,7 +237,7 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
 
     def score(self, X, y, sample_weight: None=None) -> float:
         check_is_fitted(self.estimator)
-        return self.estimator.score(X=X, y=y)
+        return self.estimator.score(X, y, sample_weight=sample_weight)
 
     def increment(self,
             X: Iterable[SourceSpaceElement],
@@ -220,7 +246,7 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
             y_ref: Optional[Iterable[OutcomeSpaceElement]]=None,
             inplace: bool=False,
             
-            **loss_kwargs) -> int:
+            **loss_kwargs) -> Tuple[ACaseBaseEnergyClassifier, int, Any]:
         """Adds a case to the CB by picking the most competent.
         
         Takes the (X,y) inputs as candidate (sources,outcomes) for the case base. Then, applies the incremental 
@@ -262,7 +288,7 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
             X_ref: Optional[Iterable[OutcomeSpaceElement]]=None,
             y_ref: Optional[Iterable[OutcomeSpaceElement]]=None,
             inplace: bool=False,
-            **loss_kwargs) -> Tuple[ACaseBaseEnergyClassifier, int]:
+            **loss_kwargs) -> Tuple[ACaseBaseEnergyClassifier, int, Any]:
         """Removes a case from the CB by picking the least competent.
         
         Applies the decremental algorithm based on reference (X_ref, y_ref) to determine the cases decreasing the 

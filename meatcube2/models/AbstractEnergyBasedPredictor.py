@@ -254,7 +254,7 @@ class ACaseBaseEnergyPredictor(Sequence, Generic[SourceSpaceElement, OutcomeSpac
         elif aggregation == "sum":
             aggregation = sum
         elif aggregation == "none" or aggregation is None or not callable(aggregation):
-            aggregation = id # no aggregation
+            aggregation = lambda x: x # no aggregation
         return aggregation(expertises)
     def loss_case_from_cb(self,
             index: int,

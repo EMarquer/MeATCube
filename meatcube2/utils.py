@@ -11,6 +11,16 @@ from sklearn.utils.metaestimators import available_if
 from sklearn.base import MetaEstimatorMixin
 from sklearn.model_selection._search import _estimator_has
 
+from time import perf_counter
+from contextlib import contextmanager
+
+@contextmanager
+def catchtime() -> Callable[[], float]:
+    """A context manager to measure the time in seconds"""
+    t1 = t2 = perf_counter() 
+    yield lambda: t2 - t1
+    t2 = perf_counter() 
+
 def to_numpy_array(values) -> np.ndarray:
     if isinstance(values, torch.Tensor):
         return values.numpy()
