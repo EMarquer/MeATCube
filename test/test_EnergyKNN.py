@@ -77,3 +77,25 @@ def test_manual_maxnn_mask(manual_energy):
             f"{mask.cpu()} != { torch.ones((len(cb), len(manual_energy_['X'])), dtype=bool)}"
         )
         
+
+@pytest.mark.parametrize('k', [1,2,3,5,10])
+@pytest.mark.parametrize('n_cb', [10,20,30,50,100])
+@pytest.mark.parametrize('n_classes', [2,3,5,10])
+def test_knn_sklearn_same_predictions(k, n_cb, n_classes, n_test=100, n_dims=5, random_seed = 42):
+    np.random.seed(random_seed)
+
+    X_cb = np.random.rand(n_cb,n_dims)
+    y_cb = np.random.randint(n_classes,size=n_cb)
+    X = np.random.rand(n_test,n_dims)
+    #y = np.random.randint(n_classes,size=n_test)
+
+    cb = EnergyKNN(euclidean_sim, class_equality_sim, n_neighbors=k, precompute_sim_matrix=True)
+    knn = KNeighborsClassifier(n_neighbors=k)
+
+    knn.fit(X_cb, y_cb)
+    cb.fit(X_cb, y_cb)
+
+    predictions_knn = knn.predict(X)
+    predictions_cb = cb.predict(X)
+
+    assert (predictions_knn == predictions_cb).all(), f'{predictions_knn=}!={predictions_cb=}'
