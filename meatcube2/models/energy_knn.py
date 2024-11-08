@@ -172,23 +172,26 @@ class EnergyKNN(ACaseBaseEnergyClassifier):
 ###########################################################
 # TODO: check output shape
 
-    def energy_cb(self, as_tensor=False):
+    def energy_cb(self, as_tensor=False, aggregation=torch.mean):
         self._compute_sim_matrix()
 
-        # X_sim_matrix_, but with -inf in the diagonal to prevent adding
-        no_equality_X_sim_matrix_ = torch.masked_fill(self.X_sim_matrix_, torch.eye(self.X_sim_matrix_.size(0)), -torch.inf)
-        no_equality_y_sim_matrix_ = torch.masked_fill(self.y_sim_matrix_, torch.eye(self.X_sim_matrix_.size(0)), torch.nan)
-        #knn_mask = KNNEnergyComputations.knn_mask(no_equality_X_sim_matrix_)
-        energy = KNNEnergyComputations.energy_zip_matrix(no_equality_X_sim_matrix_, no_equality_y_sim_matrix_, k=self.n_neighbors)
+        # X_sim_matrix_, but with -inf in the diagonal to prevent selecting the case as its own nearest neighbor
+        no_equality_X_sim_matrix_ = torch.masked_fill(self.X_sim_matrix_, torch.eye(self.X_sim_matrix_.size(0), device=self.device_, dtype=bool), -torch.inf)
+        no_equality_y_sim_matrix_ = self.y_sim_matrix_
+        
+        # because the case is supposed to be removed from the CB, the max number of neighbors is |CB|-1 instead of |CB|
+        energy = KNNEnergyComputations.energy_zip_matrix(no_equality_X_sim_matrix_, no_equality_y_sim_matrix_, k=min(self.n_neighbors, len(self)-1))
+        energy = aggregation(energy)
         if as_tensor: return energy
         return energy.cpu().item()
     
     def energy_case_from_cb(self, index: int, as_tensor=False):
-        # X_sim_matrix_, but with -inf in the diagonal to prevent adding
-        no_equality_X_sim_matrix_ = torch.masked_fill(self.X_sim_matrix_, torch.eye(self.X_sim_matrix_.size(0)), -torch.inf)[:,index]
-        no_equality_y_sim_matrix_ = torch.masked_fill(self.y_sim_matrix_, torch.eye(self.X_sim_matrix_.size(0)), torch.nan)[:,index]
-        #knn_mask = KNNEnergyComputations.knn_mask(no_equality_X_sim_matrix_)
-        energy = KNNEnergyComputations.energy_zip_matrix(no_equality_X_sim_matrix_, no_equality_y_sim_matrix_, k=self.n_neighbors)
+        # X_sim_matrix_, but with -inf in the diagonal to prevent selecting the case as its own nearest neighbor
+        no_equality_X_sim_matrix_ = torch.masked_fill(self.X_sim_matrix_, torch.eye(self.X_sim_matrix_.size(0), device=self.device_, dtype=bool), -torch.inf)[:,index]
+        no_equality_y_sim_matrix_ = self.y_sim_matrix_[:,index]
+        
+        # because the case is supposed to be removed from the CB, the max number of neighbors is |CB|-1 instead of |CB|
+        energy = KNNEnergyComputations.energy_zip_matrix(no_equality_X_sim_matrix_, no_equality_y_sim_matrix_, k=min(self.n_neighbors, len(self)-1))
         if as_tensor: return energy
         return energy.cpu().item()
     
@@ -197,9 +200,10 @@ class EnergyKNN(ACaseBaseEnergyClassifier):
         self._compute_outcome_sim_vectors()
 
         # computes the similarity of the new case to the ones in the CB
+        print(self._source_sim_vect(X).size())
         X_sim_vectors = self._source_sim_vect(X).transpose(-1,-2)
         label_index = self._outcome_index(y)
-        y_sim_vectors = self.y_sim_vectors_.select(-2, label_index).transpose(-1,-2)
+        y_sim_vectors = self.y_sim_vectors_.select(-2, label_index).unsqueeze(-2).transpose(-1,-2)
 
         energy = KNNEnergyComputations.energy_zip_matrix(X_sim_vectors, y_sim_vectors, k=self.n_neighbors)
         if as_tensor: return energy

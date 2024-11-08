@@ -47,8 +47,9 @@ class KNNEnergyComputations(object):
         
         The output is an energy matrix where energy[*, j] corresponds to the energy of the CB for case j.
         """
-        knn_mask = KNNEnergyComputations.knn_mask(sim_S, k)
-        energy = 1-(knn_mask * sim_R).sum(-3)/min(k, sim_S.shape[-2]) # [N]
+        knn_mask = KNNEnergyComputations.knn_mask(sim_S, k) # [*, M, N] 
+         # sim_R: [*, M, N] 
+        energy = 1-(knn_mask * sim_R).sum(-2)/min(k, sim_S.shape[-2]) # [*, N]
         return energy
     
     @staticmethod
@@ -79,7 +80,7 @@ class KNNEnergyComputations(object):
             it contains at most k True for each n
         """
         # sim_matrix: [*, |CB|, N]
-        k = max(k, sim_matrix.size(-2))
+        k = min(k, sim_matrix.size(-2))
         indices = torch.arange(
             sim_matrix.size(-2),
             device=sim_matrix.device
