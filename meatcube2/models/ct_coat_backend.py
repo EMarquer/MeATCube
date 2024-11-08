@@ -15,7 +15,7 @@ class CtCoATEnergyComputations(object):
     def _energy(cube):
         """The energy of the case base is the """
         e = cube.sum(dim=[-3,-2,-1])
-        return CtCoATEnergyComputations.normalize(e)
+        return CtCoATEnergyComputations.normalize(e, cube.size(-1))
 
     @staticmethod
     def _inversion_cube(source_sim: torch.Tensor, outcome_sim: torch.Tensor, source_cube: Optional[torch.Tensor]=None,
@@ -30,12 +30,12 @@ class CtCoATEnergyComputations(object):
         :return: Float tensor with coordinates `[a,b,c]` for `1 - (σs(a,b) - σs(a,c)*(σr(a,b) - σr(a,c))`.
         """
         # compute only if necessary
-        if source_cube is None: source_cube = CtCoATEnergyComputations._cubify(source_sim, "source")
-        if outcome_cube is None: outcome_cube = CtCoATEnergyComputations._cubify(outcome_sim, "outcome")
+        if source_cube is None: source_cube = CtCoATEnergyComputations._cubify(source_sim)
+        if outcome_cube is None: outcome_cube = CtCoATEnergyComputations._cubify(outcome_sim)
 
         if source_cube.dim() == 3 & outcome_cube.dim() == 4: source_cube.unsqueeze(0)
         elif source_cube.dim() == 4 & outcome_cube.dim() == 3: outcome_cube.unsqueeze(0)
-        cube = 1 - torch.mul(source_cube, outcome_cube)
+        cube = (1 - torch.mul(source_cube, outcome_cube))/2
 
         if return_all:
             return cube, source_cube, outcome_cube
@@ -60,7 +60,6 @@ class CtCoATEnergyComputations(object):
         :param sim_matrix: Tensor of the similarity matrix or stack of similarity matrices.
         :return: Tensor containing the cube (or an array of cubes) of boolean values.
         """
-        comparator = (lambda ab, ac: ab >= ac) if comparator=="source" else (lambda ab, ac: ab < ac)
         if sim_matrix.dim() >= 2 and sim_matrix.size(-1) == sim_matrix.size(-1):
             # sim_matrix: [M, M]
             # cube: [M, M, M], coordinates [a, b, c], `a` the anchor
@@ -250,7 +249,8 @@ class CtCoATEnergyComputations(object):
     @staticmethod
     def normalize(e: int, cb_size: int):
 
-        # (e + (n^2)/2)/(n^3) = e/(n^3) + ((n^2)/2)/(n^3) = e/(n^3) + (1/2n)
-        #e = (e + (cube.size(-1)^2)/2)/(cube.size(-1)^3) # (e + (n^2)/2)/(n^3)
-        e = (e/(cb_size**3)) + (1/(2*cb_size)) # e/(n^3) + (1/2n)
+        # # (e + (n^2)/2)/(n^3) = e/(n^3) + ((n^2)/2)/(n^3) = e/(n^3) + (1/2n)
+        # #e = (e + (cube.size(-1)^2)/2)/(cube.size(-1)^3) # (e + (n^2)/2)/(n^3)
+        # e = (e/(cb_size**3)) + (1/(2*cb_size)) # e/(n^3) + (1/2n)
+
         return e
