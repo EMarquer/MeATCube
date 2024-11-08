@@ -168,29 +168,29 @@ class CtCoAT(ACaseBaseEnergyClassifier):
             updated_meatcube.y_sim_matrix_ = append_symmetric(
                 self.y_sim_matrix_, outcome_sim_vect, outcome_sim_reflexive.view(-1))
         
-        # Extend the inversion cube with the new energies (if already initialized)
-        if self.X_sim_matrix_ is not None and self.y_sim_matrix_ is not None and self.cube_ is not None:
-            inv_ibc, inv_aic, inv_abi, inv_aii, inv_ibi, inv_iic, inv_iii = CtCoATEnergyComputations._energies_i(
-                self.X_sim_matrix_, self.y_sim_matrix_, # [..., M, M]
-                source_sim_vect, outcome_sim_vect, # [..., M]
-                reflexive_sim_source=source_sim_reflexive, reflexive_sim_outcome=outcome_sim_reflexive, # [...] or []
-                exclude_impossible=False)
+        # # Extend the inversion cube with the new energies (if already initialized) BUGGY!
+        # if self.X_sim_matrix_ is not None and self.y_sim_matrix_ is not None and self.cube_ is not None:
+        #     inv_ibc, inv_aic, inv_abi, inv_aii, inv_ibi, inv_iic, inv_iii = CtCoATEnergyComputations._energies_i(
+        #         self.X_sim_matrix_, self.y_sim_matrix_, # [..., M, M]
+        #         source_sim_vect, outcome_sim_vect, # [..., M]
+        #         reflexive_sim_source=source_sim_reflexive, reflexive_sim_outcome=outcome_sim_reflexive, # [...] or []
+        #         exclude_impossible=False)
             
-            # from [n, n, n] to [n, n, n+1]
-            updated_meatcube.cube_ = torch.cat([updated_meatcube.cube, inv_abi], dim=-1)
+        #     # from [n, n, n] to [n, n, n+1]
+        #     updated_meatcube.cube_ = torch.cat([self.cube_, inv_abi.squeeze(-3).unsqueeze(-1)], dim=-1)
 
-            # from [n, n].[n, 1] to [n, n+1]: add the symmetric component of the vector where the diagonal will be
-            inv_aic = torch.cat([inv_aic, inv_aii.unsqueeze(-1)], dim=-1)
-            # from [n, n, n+1].[n, n+1] to [n, n+1, n+1]
-            updated_meatcube.cube_ = torch.cat([updated_meatcube.cube, inv_aic.unsqueeze(-2)], dim=-2)
+        #     # from [n, n].[n, 1] to [n, n+1]: add the symmetric component of the vector where the diagonal will be
+        #     inv_aic = torch.cat([inv_aic, inv_aii.unsqueeze(-1)], dim=-1)
+        #     # from [n, n, n+1].[n, n+1] to [n, n+1, n+1]
+        #     updated_meatcube.cube_ = torch.cat([updated_meatcube.cube_, inv_aic.unsqueeze(-2)], dim=-2)
 
-            # from [n].[] to [n+1]
-            inv_iic = torch.cat([inv_iic, inv_iii.unsqueeze(-1)], dim=-1)
-            # from [n, n].[n, 1] to [n, n+1] to [n+1, n+1]
-            inv_ibc = torch.cat([inv_ibc, inv_ibi.unsqueeze(-1)], dim=-1)
-            inv_ibc = torch.cat([inv_ibc, inv_iic.unsqueeze(-2)], dim=-2)
-            # from [n, n+1, n+1].[n+1, n+1] to [n+1, n+1, n+1]
-            updated_meatcube.cube_ = torch.cat([updated_meatcube.cube, inv_ibc.unsqueeze(-3)], dim=-3)
+        #     # from [n].[] to [n+1]
+        #     inv_iic = torch.cat([inv_iic, inv_iii.unsqueeze(-1)], dim=-1)
+        #     # from [n, n].[n, 1] to [n, n+1] to [n+1, n+1]
+        #     inv_ibc = torch.cat([inv_ibc, inv_ibi.unsqueeze(-1)], dim=-1)
+        #     inv_ibc = torch.cat([inv_ibc, inv_iic.unsqueeze(-2)], dim=-2)
+        #     # from [n, n+1, n+1].[n+1, n+1] to [n+1, n+1, n+1]
+        #     updated_meatcube.cube_ = torch.cat([updated_meatcube.cube_, inv_ibc.unsqueeze(-3)], dim=-3)
 
         check_is_fitted(updated_meatcube)
         return updated_meatcube
