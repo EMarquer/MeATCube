@@ -218,6 +218,121 @@ class EnergyKNN(ACaseBaseEnergyClassifier):
         if as_tensor: return energy
         return energy.cpu().item()
 
+
+    def decrement_scores(self,
+            X_ref: Iterable[SourceSpaceElement],
+            y_ref: Iterable[OutcomeSpaceElement],
+            strategy: Literal["MCE", "hinge"]="hinge",
+            margin: float=0.1,
+            as_tensor=False,
+            **kwargs) -> np.ndarray[float]:
+        self._compute_sim_matrix()
+        self._compute_outcome_sim_vectors()
+
+        # energy for full CB (ommitable): [|S|, |R|]
+        source_sim_vectors = self._source_sim_vect(X_ref).T # [|CB|, |S|]
+        energies_cb = KNNEnergyComputations.energy_map_matrix(
+            source_sim_vectors, 
+            self.y_sim_vectors_.T) # [|S|, |R|]
+        
+        # --------- All the cases at once ---------
+        index = list(range(len(self)))
+        try:
+            batch_size = len(index)
+            energies_i = self._decrement_scores_batched(
+                index=index,
+                source_sim_vectors=source_sim_vectors,
+                batch_size=batch_size,
+                auto_batch_size=False
+            )
+        except torch.cuda.OutOfMemoryError:
+            batch_size = 1
+            # batch_size_power = int(np.floor(np.log2(len(index))).item())
+            # batch_size = 2**batch_size_power
+            energies_i = self._decrement_scores_batched(
+                index=index,
+                source_sim_vectors=source_sim_vectors,
+                batch_size=batch_size,
+                auto_batch_size=False
+            ) # [|CB|, |S|, |R|]
+
+        # compare the true outcome with the other outcomes
+        true_outcome_index = self._outcome_index(y_ref)
+        mask = torch.arange(
+            energies_cb.size(-1),
+            device=energies_cb.device
+        ).unsqueeze(0) == true_outcome_index.unsqueeze(1)
+        l_mce = energies_cb[~mask].min(dim=-1).values - energies_cb[mask]
+        mask_max = (mask.unsqueeze(0)) * (energies_i.max().detach() + 1) # trick to "exclude" the mask from the min
+        l_mce_i = (energies_i + mask_max).min(dim=-1).values - energies_i[:,mask]
+        # l_mce: [|S|]
+        # l_mce_i: [|index|, |S|]
+
+        # if hinge loss, modify a bit before aggregation
+        if strategy=="hinge":
+            l = -(margin - l_mce).clamp(min=0)
+            l_i = -(margin - l_mce_i).clamp(min=0)
+        else:
+            l = l_mce
+            l_i = l_mce_i
+        # l: [|S|]
+        # l_i: [|index|, |S|]
+
+        l = l.unsqueeze(0) - l_i 
+        # l: [|index|, |S|]
+
+        # aggregate the results
+        # l: if aggregation is None or "none": [|index|, |S|]
+        # l: otherwise: [|index|]
+        l = l.mean(dim=-1)
+
+        if as_tensor: return l
+        return l.cpu().numpy()
+
+    def _decrement_scores_batched(self,
+                                  index,
+                                source_sim_vectors: Iterable[SourceSpaceElement],
+                                batch_size,
+                                auto_batch_size=True,
+                                **kwargs) -> np.ndarray[float]:
+        try:
+            inversion_rates_i = []
+            index_batches = [index[i:i+batch_size] for i in range(0, len(index), batch_size)]
+            for index_batch in index_batches:
+                # we need for every i: 
+                # - the similarity between CB_X/i and X_ref
+                # - the similarity between CB_y/i and known labels
+                sim_S_i = torch.stack([
+                        remove_index(source_sim_vectors, i, dims=[-2])
+                        for i in index_batch
+                    ], dim=0).detach()
+                sim_R_i = torch.stack([
+                        remove_index(self.y_sim_vectors_.T, i, dims=[-2])
+                        for i in index_batch
+                    ], dim=0).detach()
+        
+                # inversion_rates_i: [|index_batch|, |S|, |R|]
+                inversion_rates_i.append(
+                    KNNEnergyComputations.energy_map_matrix(
+                        sim_S_i,
+                        sim_R_i))
+            inversion_rates_i = torch.cat(inversion_rates_i, dim=0)
+        
+        except torch.cuda.OutOfMemoryError as e:
+            if auto_batch_size and batch_size > 1:
+                inversion_rates_i = self._decrement_scores_batched(
+                                    index,
+                                    X_ref,
+                                    batch_size=batch_size//2,
+                                    auto_batch_size=auto_batch_size,
+                                    **kwargs)
+                self.inferred_batch_size_ = batch_size # update the batch sisze
+                return inversion_rates_i
+            else: raise e
+        return inversion_rates_i
+
+
+
 ###########################################################
     
     def _is_source_list(self, value: Union[SourceSpaceElement, Iterable[SourceSpaceElement]]) -> bool:

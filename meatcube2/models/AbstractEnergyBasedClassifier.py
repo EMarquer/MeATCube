@@ -230,7 +230,7 @@ class ACaseBaseEnergyClassifier(BaseEstimator, ClassifierMixin, ACaseBaseEnergyP
         # compute the energies
         energies = self.energy_cases_new(X, candidate_classes, as_tensor=True)
         
-        if torch.isinf(energies).any():
+        if (isinstance(energies, torch.Tensor) and torch.isinf(energies).any()):
             print(type(self))
             print(energies.cpu().tolist())
             print(np.isnan(energies.cpu().tolist()).any(), np.isinf(energies.cpu().tolist()).any())
@@ -400,8 +400,19 @@ class ACaseBaseEnergyClassifier(BaseEstimator, ClassifierMixin, ACaseBaseEnergyP
         -------
         loss_contributions : for each case in the CB, returns the contributions of the case to the loss with regards to the reference set (X_ref,y_ref)
         """
-        loss_contributions = np.array([self.loss_case_from_cb(i, X_ref, y_ref, **loss_kwargs) for i in range(len(self))])
-        return loss_contributions
+        # # Standard version
+        # loss_full = self.loss_cb(X_ref, y_ref, **loss_kwargs)
+        # return np.array([
+        #     loss_full - cb.remove(i).loss_cb(X_ref, y_ref, **loss_kwargs)
+        #     for i in range(len(self))
+        # ])
+        
+        # Version with fewer computations
+        return np.array([
+            - self.remove(i).loss_cb(X_ref, y_ref, **loss_kwargs)
+            for i in range(len(self))
+        ])
+    
     #@abstractmethod
     def increment_scores(self, X_candidate, y_candidate, X_ref, y_ref, **loss_kwargs) -> np.ndarray[float]:
         """Return the loss contribution of each case in the candidate set added to the CB w.r.t each case in the 
@@ -482,7 +493,7 @@ class ACaseBaseEnergyClassifier(BaseEstimator, ClassifierMixin, ACaseBaseEnergyP
             return_energies=True)
         
         # assume the gold outcome is predicted
-        sorted_energies = np.sort(energies, axis=-1)
+        sorted_energies = np.sort(energies, axis=len(energies.shape)-1)
         gold_energies, next_best_energies = sorted_energies[:,0], sorted_energies[:,1]
 
         # find where the predicted outcome is not the gold

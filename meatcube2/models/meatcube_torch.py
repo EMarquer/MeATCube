@@ -57,6 +57,7 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
     y_sim_vectors_ = None # float [|classes_|, |_X|], one vector per possible label
     cube_ = None # bool [|_X|, |_X|]
     device_ = None
+    parameters_ = None
 
     sim_X: Callable[[SourceSpaceElement, SourceSpaceElement], float]
     sim_y: Callable[[OutcomeSpaceElement, OutcomeSpaceElement], float]
@@ -99,6 +100,7 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
         self.y_sim_matrix_ = None # [|CB|, |CB|]
         self.y_sim_vectors_ = None # [|R|, |CB|], one vector per possible outcome
         self.cube_ = None # [|CB|, |CB|, |CB|]
+        self.parameters_ = []
 
         self.to_device(device)
 
@@ -205,7 +207,7 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
         else:
             self.device_ = device
 
-        for param in [self.X_sim_matrix_, self.y_sim_matrix_, self.y_sim_vectors_, self.cube_]:
+        for param in self.parameters_: #[self.X_sim_matrix_, self.y_sim_matrix_, self.y_sim_vectors_, self.cube_]:
             if param is not None:
                 param = param.to(self.device_)
 
@@ -275,6 +277,183 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
         if as_tensor: return inversions
         return inversions.cpu().tolist()
     
+
+
+    def decrement_scores(self,
+            X_ref: Iterable[SourceSpaceElement],
+            y_ref: Iterable[OutcomeSpaceElement],
+            strategy: Literal["MCE", "hinge"]="hinge",
+            margin: float=0.1,
+            as_tensor=False,
+            **kwargs) -> np.ndarray[float]:
+        """Compute the competence of the case base w.r.t a test set, or if an `index` is provided, the contribution of \
+        the corresponding case to the competence.
+
+        :param index: 
+            if provided, computes the contribution (`Cᵢ(CB, ...)`) of the case at `index` (`CBᵢ`) to the competence,
+            i.e., the difference of the competence with (`CB`) and without (`CB/CBᵢ`) the case:
+            `Cᵢ(CB, ...) = C(CB, ...) - C(CB/CBᵢ, ...)`.
+        :param strategy:
+            If `strategy` = "MCE", use the minimum classification error loss:
+            `ℓ(CB, cₜ) = ℓmce(CB, cₜ) = - ( E(CB ∪ {(sₜ, rₜ)})) - (min_{rₜ' ≠ rₜ}E(CB ∪ {(sₜ, rₜ')})) )`.
+
+            If `strategy` = "hinge", use the hinge competence (hinge, zero_division=0 competence = - hinge loss):
+            `ℓ(CB, cₜ) = - max(0, λ + ℓmce(CB, cₜ))`.
+        :param margin: If `strategy` = "hinge", `λ=margin`.
+        :param aggregation:
+            If `aggregation` = None or "none", returns `ℓ(CB, cₜ)` the competence with regard to each test case `cₜ`.
+            If `aggregation` = "sum", returns the sum of `ℓ(CB, cₜ)` over all the test cases.
+            If `aggregation` = "mean", returns the average of `ℓ(CB, cₜ)` over all the test cases.
+        :param normalize: (Deprecated) If True, will normalize the competence by the cube of the CB size.
+        :param batch_size:
+            If `index` is None, this parameter has no effect.
+            If `batch_size` <= 0, the contribution of all cases in `index` are computed at once (high memory impact).
+            If `batch_size` = 1, the contribution of each case in `index` is computed one after the other (low memory impact).
+            If `batch_size` > 1, the contribution of cases in `index` are computed by batches of `batch_size` indices.
+        :return:
+            If `aggregation` = None or "none", Size: [|S|] if index is None or int, [|index|, |S|] otherwise
+            If `aggregation` = "sum" or "mean", Size: [] if index is None or int, [|index|] otherwise
+        """
+        # compute necessary data, if need be
+        self._compute_sim_matrix()
+        self._compute_outcome_sim_vectors()
+
+        # computes the similarity of the new case to the ones in the CB
+        X_sim_vectors = self._source_sim_vect(X_ref)
+        y_sim_vectors = self._outcome_sim_vect(y_ref)
+        reflexive_sim_X = self._source_sim_reflexive(X_ref)
+        reflexive_sim_y = self._outcome_sim_reflexive(y_ref)
+
+        source_sim_vectors = self._source_sim_vect(X_ref) # [|S|, |CB|]
+
+        reflexive_sim_y = reflexive_sim_y.unsqueeze(-1) # [|s|, 1]
+        reflexive_sim_X = reflexive_sim_X.unsqueeze(-1) # [|s|, 1]
+
+        # inversion_rates: [|S|, |R|]
+        inversion_rates = MeATCubeEnergyComputations._gamma_i(
+            self.X_sim_matrix_.unsqueeze(0).unsqueeze(0), # [1, 1, |CB|, |CB|]
+            self.y_sim_matrix_.unsqueeze(0).unsqueeze(0), # [1, 1, |CB|, |CB|]
+            source_sim_vectors.unsqueeze(1), # [|S|, 1, |CB|]
+            self.y_sim_vectors_.unsqueeze(0), # [1, |R|, |CB|]
+            reflexive_sim_source=reflexive_sim_X,
+            reflexive_sim_outcome=reflexive_sim_y)
+        
+        # if we want the contribution of a particular case of the case base,
+        # we need to subtract the competence of the case base without said case
+
+        # --------- All the cases at once ---------
+        index = list(range(len(self)))
+        try:
+            batch_size = len(index)
+            inversion_rates_i = self._decrement_scores_batched(
+                index,
+                reflexive_sim_X,
+                reflexive_sim_y,
+                X_sim_vectors,
+                batch_size=batch_size,
+                auto_batch_size=False
+            )
+        except torch.cuda.OutOfMemoryError:
+            batch_size = 1
+            # batch_size_power = int(np.floor(np.log2(len(index))).item())
+            # batch_size = 2**batch_size_power
+            inversion_rates_i = self._decrement_scores_batched(
+                index,
+                reflexive_sim_X,
+                reflexive_sim_y,
+                X_sim_vectors,
+                batch_size=batch_size,
+                auto_batch_size=False
+            )
+
+        # compare the true outcome with the other outcomes
+        true_outcome_index = self._outcome_index(y_ref)
+        mask = torch.arange(
+            inversion_rates.size(-1),
+            device=inversion_rates.device
+        ).unsqueeze(0) == true_outcome_index.unsqueeze(1)
+        l_mce = inversion_rates[~mask].min(dim=-1).values - inversion_rates[mask]
+        mask_max = (mask.unsqueeze(0)) * (inversion_rates_i.max().detach() + 1) # trick to "exclude" the mask from the min
+        l_mce_i = (inversion_rates_i + mask_max).min(dim=-1).values - inversion_rates_i[:,mask]
+        # l_mce: [|S|]
+        # l_mce_i: [|index|, |S|]
+
+        # if hinge loss, modify a bit before aggregation
+        if strategy=="hinge":
+            l = -(margin - l_mce).clamp(min=0)
+            l_i = -(margin - l_mce_i).clamp(min=0)
+        else:
+            l = l_mce
+            l_i = l_mce_i
+        # l: [|S|]
+        # l_i: [|index|, |S|]
+
+        l = l.unsqueeze(0) - l_i 
+        # l: [|index|, |S|]
+
+
+        # aggregate the results
+        # l: if aggregation is None or "none": [|index|, |S|]
+        # l: otherwise: [|index|]
+        l = l.mean(dim=-1)
+        if as_tensor: return l
+        return l.cpu().numpy()
+    
+
+    def _decrement_scores_batched(self,
+                                  index,
+                                reflexive_sim_X,
+                                reflexive_sim_y,
+                                X_sim_vectors,
+                                batch_size,
+                                auto_batch_size=True,
+                                **kwargs) -> np.ndarray[float]:
+        try:
+            inversion_rates_i = []
+            index_batches = [index[i:i+batch_size] for i in range(0, len(index), batch_size)]
+            for index_batch in index_batches:
+            #for index_batch in index_batches:
+                source_sim_matrix_i = torch.stack([
+                    remove_index(self.X_sim_matrix_, i, dims=[-1,-2])
+                    for i in index_batch
+                ], dim=0).detach()
+                outcome_sim_matrix_i = torch.stack([
+                    remove_index(self.y_sim_matrix_, i, dims=[-1,-2])
+                    for i in index_batch
+                ], dim=0).detach()
+                source_sim_vectors_i = torch.stack([
+                    remove_index(X_sim_vectors, i, dims=[-1])
+                    for i in index_batch
+                ], dim=0).detach()
+                outcome_sim_vectors_i = torch.stack([
+                    remove_index(self.y_sim_vectors_, i, dims=[-1])
+                    for i in index_batch
+                ], dim=0).detach()
+                # inversion_rates_i: [|index_batch|, |S|, |R|]
+                inversion_rates_i.append(MeATCubeEnergyComputations._gamma_i(
+                    source_sim_matrix_i.unsqueeze(1).unsqueeze(1), # [|index_batch|, 1, 1, |CB|-1, |CB|-1]
+                    outcome_sim_matrix_i.unsqueeze(1).unsqueeze(1), # [|index_batch|, 1, 1, |CB|-1, |CB|-1]
+                    source_sim_vectors_i.unsqueeze(2), # [|index_batch|, |S|, 1, |CB|-1]
+                    outcome_sim_vectors_i.unsqueeze(1), # [|index_batch|, 1, |R|, |CB|-1]
+                    reflexive_sim_source=reflexive_sim_X.unsqueeze(0),
+                    reflexive_sim_outcome=reflexive_sim_y.unsqueeze(0)).detach())
+            inversion_rates_i = torch.cat(inversion_rates_i, dim=0)
+        
+        except torch.cuda.OutOfMemoryError as e:
+            if auto_batch_size and batch_size > 1:
+                inversion_rates_i = self._decrement_scores_batched(
+                                    index,
+                                    reflexive_sim_X,
+                                    reflexive_sim_y,
+                                    X_sim_vectors,
+                                    batch_size=batch_size//2,
+                                    auto_batch_size=auto_batch_size,
+                                    **kwargs)
+                self.inferred_batch_size_ = batch_size # update the batch sisze
+                return inversion_rates_i
+            else: raise e
+        return inversion_rates_i
+
 ###########################################################
 
     '''
@@ -491,6 +670,7 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
             self.y_sim_vectors_ = torch.tensor(cdist(
                 potential, self._prep_outcome_for_dist(self._y), metric=self.sim_y))
             self.y_sim_vectors_ = self.y_sim_vectors_.to(self.device_)
+            self.parameters_.append(self.y_sim_vectors_)
 
     def _compute_sim_matrix(self, force_recompute: bool=False) -> None:
         """Computes the similarity matrices."""
@@ -498,10 +678,12 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
             self.X_sim_matrix_ = torch.tensor(squareform(pdist(self._prep_source_for_dist(self._X), metric=self.sim_X)))
             self.X_sim_matrix_ = self.X_sim_matrix_.diagonal_scatter(self._source_sim_reflexive(self._X))
             self.X_sim_matrix_ = self.X_sim_matrix_.to(self.device_)
+            self.parameters_.append(self.X_sim_matrix_)
         if force_recompute or self.y_sim_matrix_ is None:
             self.y_sim_matrix_ = torch.tensor(squareform(pdist(self._prep_outcome_for_dist(self._y), metric=self.sim_y)))
             self.y_sim_matrix_ = self.y_sim_matrix_.diagonal_scatter(self._outcome_sim_reflexive(self._y))
             self.y_sim_matrix_ = self.y_sim_matrix_.to(self.device_)
+            self.parameters_.append(self.y_sim_matrix_)
 
     def _compute_inversion_cube(self, force_recompute: bool=False) -> None:
         """Computes the inversion cube."""
@@ -511,6 +693,7 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
 
             # then we compute the cube
             self.cube_ = MeATCubeEnergyComputations._inversion_cube(self.X_sim_matrix_, self.y_sim_matrix_, return_all=False)
+            self.parameters_.append(self.cube_)
 
     def _source_sim_vect(self, sources: Union[SourceSpaceElement, Iterable[SourceSpaceElement]]) -> torch.Tensor:
         """Computes the similarity between the source and the CB in the source space.

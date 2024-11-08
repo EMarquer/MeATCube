@@ -93,6 +93,7 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
             #patience : int = -1,
             warm_start: bool=False,
             force_copy: bool=True,
+            fit_kwargs=dict(),
             **loss_kwargs) -> Self:
         """The default fitting method simply takes the (X,y) inputs as (sources,outcomes) for the case base (CB).
         If modifications are to be made to the CB, only the final version is copied.
@@ -164,7 +165,7 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
         if force_copy: 
             self.estimator = clone(self.estimator)
         if not warm_start: 
-            self.estimator.fit(X, y, classes, force_copy=force_copy)
+            self.estimator.fit(X, y, classes, force_copy=force_copy, **fit_kwargs)
         self.initial_estimator_len_ = len(self.estimator)
 
         # start the fitting process
@@ -208,15 +209,19 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
             # update the estimator
             with catchtime() as t:
                 if self.mode == "decrement":
-                    _, idx, _ = self.decrement(X_ref=X_ref, y_ref=y_ref, inplace=True, **loss_kwargs)
+                    estimator, idx, _ = self.decrement(X_ref=X_ref, y_ref=y_ref, inplace=not self.memorize_estimators, **loss_kwargs)
                 elif self.mode == "increment":
-                    _, idx, _ = self.increment(X_unused, y_unused, X_ref, y_ref, inplace=True, **loss_kwargs)
+                    estimator, idx, _ = self.increment(X_unused, y_unused, X_ref, y_ref, inplace=not self.memorize_estimators, **loss_kwargs)
 
             # evaluate the latest model and update best model
             self.scores_.append(get_score_to_watch())
             self.results_[-1]["fit_time"] = t()
             if self.memorize_estimators:
-                self.estimators_.append(self.estimator)
+                # un-CUDA the estimator to be stored
+                self.estimator = estimator
+                if "device" in self.estimator.__dict__.keys():
+                    estimator.to_device("cpu")
+                self.estimators_.append(estimator)
             if self.scores_[-1] > self.best_score_: # update best model
                 self.best_score_ = self.scores_[-1]
                 if self.memorize_estimators:

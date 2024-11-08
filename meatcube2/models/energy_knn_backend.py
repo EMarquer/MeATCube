@@ -71,14 +71,33 @@ class KNNEnergyComputations(object):
 
     @staticmethod
     def knn_mask(sim_matrix, k=3):
-        # dists: [|CB|, N]
-        k_neighboors = torch.argsort(sim_matrix, dim=0, descending=True)[:k] # [K, N]
+        """From a similarity matrix, produces a mask to apply on the outcomes.
         
-        label_mask = (
-            torch.arange(sim_matrix.size(0), device=sim_matrix.device).unsqueeze(1).unsqueeze(2) # [|CB|, *]
-            == 
-            k_neighboors) # [|CB|, K, N]
-        label_mask = label_mask.any(dim=1)# [|CB|, N]
+        sim_matrix: [*, M, N] for the similarity between m ∈ M and n ∈ N, * represents any number of batch dimensions
+        output: [*, M, N] boolean matrix
+            contains True at  [*, m, n] if m ∈ M is among the k nearest neighbors of n ∈ N
+            it contains at most k True for each n
+        """
+        # sim_matrix: [*, |CB|, N]
+        k = max(k, sim_matrix.size(-2))
+        indices = torch.arange(
+            sim_matrix.size(-2),
+            device=sim_matrix.device
+        ).unsqueeze(-1).unsqueeze(-1) # [|CB|, 1, 1]
+        
+        k_neighboors = torch.argsort(sim_matrix, dim=-2, descending=True) # [*, |CB|, N]
+        k_neighboors = k_neighboors.transpose(-2, 0)[:k].transpose(-2, 0) # [*, K, N]
+        k_neighboors = k_neighboors.unsqueeze(-3) # [*, 1, K, N]
+        # k_neighboors contains the indices of the top k neighbors, for each n ∈ N
+
+        for i in range(sim_matrix.dim()-2):
+            indices = indices.unsqueeze(0) # [*, |CB|, 1, 1]
+
+        # contains True at (*, c, i, n) if the index of c ∈ CB is the index of the i-th nearest neighbor of n ∈ N
+        label_mask = (indices == k_neighboors) # [*, |CB|, K, N]
+
+        # contains True at (*, c, n) if the index of c ∈ CB is among the k nearest neighbor of n ∈ N
+        label_mask = label_mask.any(dim=-2)# [*, |CB|, N]
         return label_mask
 
 # %%
