@@ -74,7 +74,7 @@ class CtCoATEnergyComputations(object):
     
     @staticmethod
     def _energies_i(sim_source: torch.Tensor, sim_outcome: torch.Tensor, new_sim_source: torch.Tensor, new_sim_outcome: torch.Tensor,
-                      reflexive_sim_source=1, reflexive_sim_outcome=1, exclude_impossible=True) -> (
+                      reflexive_sim_source=1, reflexive_sim_outcome=1) -> (
             Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]):
 
         """The idea is to compute the energies for every possible outcome, and make the choice of the right one only afterwards.
@@ -102,6 +102,43 @@ class CtCoATEnergyComputations(object):
         - gamma_aii, gamma_ibi, gamma_iic: Size: `[..., M]`
         - gamma_iii: Size: `[...]`
         """
+
+        """
+        E(st, rt) = 
+           ∑_(i,j,k ∈ CB ∪ {(st, rt)}) (1 - [σS(si,sj) - σS(si,sk)]*[σR(ri,rj)-σR(ri,rk)])/2 
+           - ∑_(i,j,k ∈ CB) (1 - [σS(si,sj) - σS(si,sk)]*[σR(ri,rj)-σR(ri,rk)])/2
+        
+        with CB' = ( CB² x {(si, ri)} ) ∪ ( CB x {(si, ri)} x CB ) ∪ ( {(si, ri)} x CB²)
+        E(si, ri) = 
+           ∑_(a,b,c ∈ CB') (1 - [σS(sa,sb) - σS(sa,sc)]*[σR(ra,rb)-σR(ra,rc)])/2
+
+        = ∑_(a,b ∈ CB) (1 - [σS(sa,sb) - σS(sa,si)]*[σR(ra,rb)-σR(ra,ri)])/2
+        + ∑_(b,c ∈ CB) (1 - [σS(si,sb) - σS(si,sc)]*[σR(ri,rb)-σR(ri,rc)])/2
+        + ∑_(a,c ∈ CB) (1 - [σS(sa,si) - σS(sa,sc)]*[σR(ra,ri)-σR(ra,rc)])/2
+        + ∑_(a ∈ CB) (1 - [σS(sa,si) - σS(sa,si)]*[σR(ra,ri)-σR(ra,ri)])/2
+        + ∑_(b ∈ CB) (1 - [σS(si,sb) - σS(si,si)]*[σR(ri,rb)-σR(ri,ri)])/2
+        + ∑_(c ∈ CB) (1 - [σS(si,si) - σS(si,sc)]*[σR(ri,ri)-σR(ri,rc)])/2
+        + (1 - [σS(si,si) - σS(si,si)]*[σR(ri,ri)-σR(ri,ri)])/2
+
+        In particular:
+            inv_abi = ∑_(a,b ∈ CB) (1 - [σS(sa,sb) - σS(sa,si)]*[σR(ra,rb)-σR(ra,ri)])/2
+            inv_ibc = ∑_(b,c ∈ CB) (1 - [σS(si,sb) - σS(si,sc)]*[σR(ri,rb)-σR(ri,rc)])/2
+            inv_aic = ∑_(a,c ∈ CB) (1 - [σS(sa,si) - σS(sa,sc)]*[σR(ra,ri)-σR(ra,rc)])/2
+
+            inv_aii = ∑_(a ∈ CB) (1 - [σS(sa,si) - σS(sa,si)]*[σR(ra,ri)-σR(ra,ri)])/2
+                    = ∑_(a ∈ CB) (1 - [0]*[0])/2
+                    = ∑_(a ∈ CB) 1/2
+            inv_ibi = ∑_(b ∈ CB) (1 - [σS(si,sb) - σS(si,si)]*[σR(ri,rb)-σR(ri,ri)])/2
+                    = ∑_(b ∈ CB) (1 - [σS(si,sb) - 1]*[σR(ri,rb) - 1])/2
+            inv_iic = ∑_(c ∈ CB) (1 - [σS(si,si) - σS(si,sc)]*[σR(ri,ri)-σR(ri,rc)])/2
+                    = ∑_(c ∈ CB) (1 - [1 - σS(si,sc)]*[1-σR(ri,rc)])/2
+
+            inv_iii = (1 - [σS(si,si) - σS(si,si)]*[σR(ri,ri)-σR(ri,ri)])/2
+                    = (1 - [0]*[0])/2
+                    = 1/2
+        """
+
+
         # rename in a short manner
         s=sim_source  # [..., M, M]
         o=sim_outcome  # [..., M, M]
@@ -109,33 +146,37 @@ class CtCoATEnergyComputations(object):
         oi=new_sim_outcome  # [..., M]
         sii=reflexive_sim_source  # [...] or []
         oii=reflexive_sim_outcome  # [...] or []
+
+        formula = lambda delta_s, delta_o: (1 - torch.mul(delta_s, delta_o))/2
+
         # gamma_ibc: [..., M, 1] . [..., 1, M] -> [..., M, M]
-        inv_ibc = 1 - torch.mul((si.unsqueeze(-1) - si.unsqueeze(-2)),
-                     (oi.unsqueeze(-1) - oi.unsqueeze(-2)))
+        inv_ibc = formula(
+            delta_s=(si.unsqueeze(-1) - si.unsqueeze(-2)),
+            delta_o=(oi.unsqueeze(-1) - oi.unsqueeze(-2)))
         # gamma_aic: [..., M, 1] . [..., M, M] -> [..., M, M]
-        inv_aic = 1 - torch.mul((si.unsqueeze(-1) - s),
-                     (oi.unsqueeze(-1) - o))
+        inv_aic = formula(
+            delta_s=(si.unsqueeze(-1) - s),
+            delta_o=(oi.unsqueeze(-1) - o))
         # gamma_abi: [..., M, M] . [..., M, 1] -> [..., M, M]
-        inv_abi = 1 - torch.mul((s - si.unsqueeze(-1)),
-                     (o - oi.unsqueeze(-1)))
+        inv_abi = formula(
+            delta_s=(s - si.unsqueeze(-1)),
+            delta_o=(o - oi.unsqueeze(-1)))
         
         if isinstance(sii, torch.Tensor) and sii.dim() == si.dim() - 1:
             sii = sii.unsqueeze(-1)
         if isinstance(oii, torch.Tensor) and oii.dim() == oi.dim() - 1:
             oii = oii.unsqueeze(-1)
         # gamma_ibi: [..., M] . [] -> [..., M]
-        inv_ibi = 1 - torch.mul((si - sii),
-                    (oi - oii))
+        inv_ibi = formula(
+            delta_s=(si - sii),
+            delta_o=(oi - oii))
         # gamma_iic: [] . [..., M] -> [..., M]
-        inv_iic = 1 - torch.mul((sii - si), 
-                    (oii - oi))
+        inv_iic = formula(
+            delta_s=(sii - si), 
+            delta_o=(oii - oi))
         
-        if exclude_impossible:
-            inv_aii = 1 - 0 # cannot invert itself
-            inv_iii = 1 - 0 # cannot invert itself, special case of gamma_aii
-        else:
-            inv_aii = 1 - torch.zeros_like(inv_iic)
-            inv_iii = 1 - torch.zeros_like(inv_iic.select(-1, 0))
+        inv_aii = torch.ones_like(inv_iic)/2
+        inv_iii = torch.ones_like(inv_iic.select(-1, 0))/2
 
         return inv_ibc, inv_aic, inv_abi, inv_aii, inv_ibi, inv_iic, inv_iii
 
@@ -173,7 +214,7 @@ class CtCoATEnergyComputations(object):
             sim_source, sim_outcome, # [..., M, M]
             new_sim_source, new_sim_outcome, # [..., M]
             reflexive_sim_source=reflexive_sim_source, reflexive_sim_outcome=reflexive_sim_outcome, # [...] or []
-            exclude_impossible=True)
+            )
 
         # gamma_ibc, gamma_aic, gamma_abi: [..., M, M] -> [...]
         gamma_ibc = inv_ibc.sum(dim=[-2,-1]) 
@@ -183,9 +224,8 @@ class CtCoATEnergyComputations(object):
         # gamma_ibi, gamma_iic: [..., M] -> [...]
         gamma_ibi = inv_ibi.sum(dim=-1)
         gamma_iic = inv_iic.sum(dim=-1)
-        
-        gamma_aii = 0 # cannot invert itself
-        gamma_iii = 0 # cannot invert itself, special case of gamma_aii
+        gamma_aii = inv_aii.sum(dim=-1) # cannot invert itself
+        gamma_iii = 1/2 # cannot invert itself, special case of gamma_aii
 
         return gamma_ibc + gamma_aic + gamma_abi + gamma_aii + gamma_ibi + gamma_iic + gamma_iii
     
