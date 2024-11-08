@@ -43,3 +43,12 @@ def test_manual_energy_case_new(manual_energy):
         for X_, y_, e in zip(manual_energy_["X"], manual_energy_["y"], manual_energy_["CtCoAT"]["energy_case_new"]):
             calculated_e = cb.energy_case_new(X_, y_)
             assert abs(calculated_e - e) <= manual_energy_["CtCoAT"]["epsilon"], f"error of {calculated_e - e}: |{calculated_e=} - {e=}|"
+
+def test_manual_energy_case_new_through_cb(manual_energy):
+        # energy of the case
+    for manual_energy_ in manual_energy:
+        cb = CtCoAT(euclidean_sim, class_equality_sim)
+        cb.fit(manual_energy_["CB X"], manual_energy_["CB y"])
+        for X_, y_, e in zip(manual_energy_["X"], manual_energy_["y"], manual_energy_["CtCoAT"]["energy_case_new"]):
+            calculated_e = cb.add(X_, y_).energy_cb() - cb.energy_cb() 
+            assert abs(calculated_e - e) <= manual_energy_["CtCoAT"]["epsilon"], f"error of {calculated_e - e}: |{calculated_e=} - {e=}|"
