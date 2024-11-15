@@ -8,6 +8,7 @@ from typing import Union, Literal, Tuple, Optional, Callable, Generic, TypeVar, 
 from scipy.spatial.distance import squareform, pdist, cdist
 from tqdm.auto import tqdm
 from ..torch_utils import pop_index
+from ..utils import estimate_mem_utilisation
 
 
 class CtCoATEnergyComputations(object):
@@ -85,6 +86,38 @@ class CtCoATEnergyComputations(object):
         return cube
     
     @staticmethod
+    def _estimate_memory_energies_i(sim_source, sim_outcome, new_sim_source, new_sim_outcome,
+                      reflexive_sim_source=1, reflexive_sim_outcome=1, exclude_impossible=True) -> int:
+        """
+        -------
+        Memory usage
+        -------
+        batch_dims * (3 * ([M, M] + [M]) + 1) * float
+        """
+        # get max broadcast sizes
+        batch_sizes = list(sim_source.size()[:-2])
+        other_inputs = [sim_outcome.size()[:-2], new_sim_source.size()[:-1], new_sim_outcome.size()[:-1]]
+        if isinstance(reflexive_sim_source, torch.Tensor): other_inputs += [reflexive_sim_source.size()]
+        if isinstance(reflexive_sim_outcome, torch.Tensor): other_inputs += [reflexive_sim_outcome.size()]
+        for other_batch_sizes in other_inputs:
+            for i in range(len(batch_sizes)):
+                batch_sizes[i] = max(batch_sizes[i], other_batch_sizes[i])
+
+        M = sim_source.size(-1)
+        mem_estimate_inv_ibc = mem_estimate_inv_aic = mem_estimate_inv_abi = estimate_mem_utilisation(dtype=float, size=list(batch_sizes) + [M, M])
+        mem_estimate_inv_iic = mem_estimate_inv_ibi = estimate_mem_utilisation(dtype=float, size=list(batch_sizes) + [M])
+        if exclude_impossible:
+            mem_estimate_inv_aii = 0
+            mem_estimate_inv_iii = 0
+        else:
+            mem_estimate_inv_aii = mem_estimate_inv_iic
+            mem_estimate_inv_iii = mem_estimate_inv_iic/M
+        
+        operations = [mem_estimate_inv_ibc, mem_estimate_inv_aic, mem_estimate_inv_abi, mem_estimate_inv_iic, mem_estimate_inv_ibi, mem_estimate_inv_aii, mem_estimate_inv_iii]
+        mem_estimate = sum(operations) + max(operations)
+        return mem_estimate
+
+    @staticmethod
     def _energies_i(sim_source: torch.Tensor, sim_outcome: torch.Tensor, new_sim_source: torch.Tensor, new_sim_outcome: torch.Tensor,
                       reflexive_sim_source=1, reflexive_sim_outcome=1, exclude_impossible=False) -> (
             Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]):
@@ -115,10 +148,6 @@ class CtCoATEnergyComputations(object):
         - gamma_iii: Size: `[...]`
 
 
-        -------
-        Memory usage
-        -------
-        batch_dims * (3 * ([M, M] + [M]) + 1) * float
         """
 
         """
@@ -203,6 +232,42 @@ class CtCoATEnergyComputations(object):
         return inv_ibc, inv_aic, inv_abi, inv_aii, inv_ibi, inv_iic, inv_iii
 
     @staticmethod
+    def _estimate_memory_gamma_i(sim_source, sim_outcome, new_sim_source, new_sim_outcome,
+                      reflexive_sim_source=1, reflexive_sim_outcome=1) -> int:
+        """
+
+        -------
+        Memory usage
+        -------
+        _energies_i + (6 * batch_dims) * float
+
+        i.e. batch_dims * (3 * [M, M] + 2 * [M] + 7) * float
+        """
+        # get max broadcast sizes
+        batch_sizes = list(sim_source.size()[:-2])
+        other_inputs = [sim_outcome.size()[:-2], new_sim_source.size()[:-1], new_sim_outcome.size()[:-1]]
+        if isinstance(reflexive_sim_source, torch.Tensor): other_inputs += [reflexive_sim_source.size()]
+        if isinstance(reflexive_sim_outcome, torch.Tensor): other_inputs += [reflexive_sim_outcome.size()]
+        for other_batch_sizes in other_inputs:
+            for i in range(len(batch_sizes)):
+                batch_sizes[i] = max(batch_sizes[i], other_batch_sizes[i])
+        
+        memory_inversions_i = CtCoATEnergyComputations._estimate_memory_inversions_i(
+            sim_source=sim_source,
+            sim_outcome=sim_outcome,
+            new_sim_source=new_sim_source,
+            new_sim_outcome=new_sim_outcome,
+            reflexive_sim_source=reflexive_sim_source,
+            reflexive_sim_outcome=reflexive_sim_outcome)
+        
+        mem_estimate_gamma_ibc = mem_estimate_gamma_aic = mem_estimate_gamma_abi = estimate_mem_utilisation(dtype=int, size=other_batch_sizes)
+        mem_estimate_gamma_ibi = mem_estimate_gamma_iic = estimate_mem_utilisation(dtype=int, size=other_batch_sizes)
+
+        operations = [mem_estimate_gamma_ibc, mem_estimate_gamma_aic, mem_estimate_gamma_abi, mem_estimate_gamma_ibi, mem_estimate_gamma_iic]
+        mem_estimate = memory_inversions_i + sum(operations) + max(operations)
+        return mem_estimate
+    
+    @staticmethod
     def _gamma_i(sim_source: torch.Tensor, 
                  sim_outcome: torch.Tensor, 
                  new_sim_source: torch.Tensor,
@@ -231,13 +296,6 @@ class CtCoATEnergyComputations(object):
         :param normalize: (Deprecated) If True, will normalize the competence by the cube of the CB size.
 
         :return: The competence of `CB` w.r.t the case `i`.
-
-        -------
-        Memory usage
-        -------
-        _energies_i + (6 * batch_dims) * float
-
-        i.e. batch_dims * (3 * [M, M] + 2 * [M] + 7) * float
         """
         inv_ibc, inv_aic, inv_abi, inv_aii, inv_ibi, inv_iic, inv_iii = CtCoATEnergyComputations._energies_i(
             sim_source, sim_outcome, # [..., M, M]

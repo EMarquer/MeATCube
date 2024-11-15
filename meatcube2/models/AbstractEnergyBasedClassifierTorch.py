@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from scipy.spatial.distance import squareform, pdist, cdist
 from tqdm.auto import tqdm
 import pickle
-from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
+from sklearn.utils.validation import check_X_y, check_array, check_is_fitted, NotFittedError
 
 from meatcube2.models.AbstractEnergyBasedPredictor import ACaseBaseEnergyPredictor
 
@@ -19,14 +19,9 @@ from .AbstractEnergyBasedClassifier import ACaseBaseEnergyClassifier, SourceSpac
 
 NumberOrBool = Union[float, int, bool]
 
-TQDM_VERBOSE = True
-
-class MeATCubeCB(ACaseBaseEnergyClassifier):
+class AbstractEnergyBasedClassifierTorch(ACaseBaseEnergyClassifier, torch.Module):
     """Collection of tensors and metrics that automate the computations of several metrics based on the number of 
-    inversions, and supports addition and deletion of cases.
-    
-    Based on MeATCube: (Me)asure of the complexity of a dataset for (A)nalogical (T)ransfer using Boolean (Cube)s, or 
-    slices of them.
+    inversions, and supports addition and deletion of cases. Expect similarities as input.
     
     Attributes
     ----------
@@ -45,31 +40,20 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
         the list of possible classes in the CB
     n_features_in_: int
         number of features expected in the situation space
-
-    
-    TODO
-    ----
-    optimize :     
-        .decrement_scores
-        
-        .increment_scores
     """
+
     X_sim_matrix_ = None # float [|_X|, |_X|]
     y_sim_matrix_ = None # float [|_X|, |_X|]
     y_sim_vectors_ = None # float [|classes_|, |_X|], one vector per possible label
-    cube_ = None # bool [|_X|, |_X|]
     device_ = None
-    parameters_ = None
 
     sim_X: Callable[[SourceSpaceElement, SourceSpaceElement], float]
     sim_y: Callable[[OutcomeSpaceElement, OutcomeSpaceElement], float]
-    precompute_cube: bool
     precompute_sim_matrix: bool
     
     def __init__(self,
                  sim_X: Callable[[SourceSpaceElement, SourceSpaceElement], float],
                  sim_y: Callable[[OutcomeSpaceElement, OutcomeSpaceElement], float],
-                 precompute_cube: bool= False,
                  precompute_sim_matrix: bool= False):
         """
         Parameters
@@ -81,13 +65,14 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
         precompute_sim_matrix : bool (default=False)
             whether to compute the similarity matrices and vector during .fit or delay until first calls to energy_cb
         """
+
         try: pickle.dumps(sim_X)
         except AttributeError: raise ValueError("sim_X not pickleable, but it should be") 
         try: pickle.dumps(sim_y)
-        except AttributeError: raise ValueError("sim_y not pickleable, but it should be") 
+        except AttributeError: raise ValueError("sim_y not pickleable, but it should be")
+
         self.sim_X = sim_X
         self.sim_y = sim_y
-        self.precompute_cube = precompute_cube
         self.precompute_sim_matrix = precompute_sim_matrix
         
     def fit(self, 
@@ -101,7 +86,6 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
         self.X_sim_matrix_ = None # [|CB|, |CB|]
         self.y_sim_matrix_ = None # [|CB|, |CB|]
         self.y_sim_vectors_ = None # [|R|, |CB|], one vector per possible outcome
-        self.cube_ = None # [|CB|, |CB|, |CB|]
         self.parameters_ = []
 
         self.to_device(device)
@@ -110,110 +94,123 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
         if self.precompute_sim_matrix:
             self._compute_sim_matrix()
             self._compute_outcome_sim_vectors()
-        if self.precompute_cube:
-            self._compute_inversion_cube()
 
         return self
+    
+    def clone(self, precompute_sim_matrix=None, force_clone_tensors=True, refit=False, refit_kwargs=dict()) -> AbstractEnergyBasedClassifierTorch:
+        if precompute_sim_matrix is None: precompute_sim_matrix = self.precompute_sim_matrix
+        copy = type(self)(sim_X=self.sim_X, sim_y=self.sim_y, precompute_sim_matrix=precompute_sim_matrix)
+        
+        if refit:
+            default_refit_kwargs = dict(
+                X=self._X,
+                y=self._y,
+                classes=self.classes_,
+                device=self.device_
+            )
+            default_refit_kwargs.update(refit_kwargs)
+            try:
+                check_is_fitted(self)
+                if precompute_sim_matrix: copy.precompute_sim_matrix = False
+                copy.fit(default_refit_kwargs)
+                if precompute_sim_matrix: copy.precompute_sim_matrix = True
 
-    def remove(self, index: int) -> MeATCubeCB:
+                if self.X_sim_matrix_ is not None:
+                    copy.X_sim_matrix_ = self.X_sim_matrix_ if not force_clone_tensors else torch.clone(self.X_sim_matrix_)
+                if self.y_sim_matrix_ is not None:
+                    copy.y_sim_matrix_ = self.y_sim_matrix_ if not force_clone_tensors else torch.clone(self.y_sim_matrix_)
+                if self.y_sim_vectors_ is not None:
+                    copy.y_sim_vectors_ = self.y_sim_vectors_ if not force_clone_tensors else torch.clone(self.y_sim_vectors_)
+            except NotFittedError:
+                pass # ignore if not fitted
+
+        return copy
+
+    def remove(self, index: int, device=None) -> AbstractEnergyBasedClassifierTorch:
         """Returns a copy of this MeATCubeCB object where case `index` has been removed.
         
-        If initialized, will copy and update the similarity matrices and the cube."""
+        If initialized, will copy and update the similarity matrices and vectors."""
         check_is_fitted(self)
         if isinstance(index, torch.Tensor): # failsafe
             index_cpu=int(index.cpu().item())
         else:
             index_cpu=index
-        updated_meatcube = MeATCubeCB(sim_X=self.sim_X,sim_y=self.sim_y)
-        updated_meatcube.fit(
-            X=np.delete(self._X, index_cpu, axis=0),
-            y=np.delete(self._y, index_cpu, axis=0),
-            classes=self.classes_,
-            device=self.device_)
+
+        copy = self.clone(
+            force_clone_tensors = False, # as we will use modified versions anyway
+            refit=True,
+            refit_kwargs=dict(
+                X=np.delete(self._X, index_cpu, axis=0),
+                y=np.delete(self._y, index_cpu, axis=0),
+                classes=self.classes_,
+                device=(self.device_ if device is None else device))
+        )   
 
         # Copy the similarity matrices without the row at index nor the row at index (if already initialized)
         if self.X_sim_matrix_ is not None:
-            updated_meatcube.X_sim_matrix_ = remove_index(self.X_sim_matrix_, index, dims=[-1,-2])
+            copy.X_sim_matrix_ = remove_index(self.X_sim_matrix_, index, dims=[-1,-2])
         if self.y_sim_matrix_ is not None:
-            updated_meatcube.y_sim_matrix_ = remove_index(self.y_sim_matrix_, index, dims=[-1,-2])
+            copy.y_sim_matrix_ = remove_index(self.y_sim_matrix_, index, dims=[-1,-2])
         if self.y_sim_vectors_ is not None:
-            updated_meatcube.y_sim_vectors_ = remove_index(self.y_sim_vectors_, index, dims=[-1])
-        if self.cube_ is not None:
-            updated_meatcube.cube_ = remove_index(self.cube_, index, dims=[-1,-2,-3])
+            copy.y_sim_vectors_ = remove_index(self.y_sim_vectors_, index, dims=[-1])
         
-        check_is_fitted(updated_meatcube)
-        return updated_meatcube
+        check_is_fitted(copy)
+        return copy
     
-    def add(self, case_source: SourceSpaceElement, case_outcome: OutcomeSpaceElement) -> MeATCubeCB:
+    def add(self, case_source: SourceSpaceElement, case_outcome: OutcomeSpaceElement, device=None) -> AbstractEnergyBasedClassifierTorch:
         """Returns a copy of this MeATCubeCB object where case `index` has been removed.
         
-        If initialized, will copy and update the similarity matrices and the cube."""
+        If initialized, will copy and update the similarity matrices and vectors."""
         check_is_fitted(self)
-        updated_meatcube = MeATCubeCB(sim_X=self.sim_X,sim_y=self.sim_y)
-        updated_meatcube.fit(
-            X=np.append(self._X, [case_source], axis=0),
-            y=np.append(self._y, [case_outcome], axis=0),
-            classes=self.classes_,
-            device=self.device_)
+        copy = self.clone(
+            force_clone_tensors = False, # as we will use modified versions anyway
+            refit=True,
+            refit_kwargs=dict(
+                X=np.append(self._X, [case_source], axis=0),
+                y=np.append(self._y, [case_outcome], axis=0),
+                classes=self.classes_,
+                device=(self.device_ if device is None else device))
+        )
         
         # Extend the similarity matrix with the new similarity (if already initialized)
         if self.X_sim_matrix_ is not None:
             source_sim_vect = self._source_sim_vect(case_source)
             source_sim_reflexive = torch.tensor(self.sim_X(case_source, case_source), device=self.device_)
-            updated_meatcube.X_sim_matrix_ = append_symmetric(
+            copy.X_sim_matrix_ = append_symmetric(
                 self.X_sim_matrix_, source_sim_vect, source_sim_reflexive.view(-1))
         if self.y_sim_matrix_ is not None:
             outcome_sim_vect = self._outcome_sim_vect(case_outcome)
             outcome_sim_reflexive = torch.tensor(self.sim_y(case_outcome, case_outcome), device=self.device_)
-            updated_meatcube.y_sim_matrix_ = append_symmetric(
+            copy.y_sim_matrix_ = append_symmetric(
                 self.y_sim_matrix_, outcome_sim_vect, outcome_sim_reflexive.view(-1))
         
-        # Extend the inversion cube with the new inversions (if already initialized)
-        if self.X_sim_matrix_ is not None and self.y_sim_matrix_ is not None and self.cube_ is not None:
-            inv_ibc, inv_aic, inv_abi, inv_aii, inv_ibi, inv_iic, inv_iii = MeATCubeEnergyComputations._inversions_i(
-                self.X_sim_matrix_, self.y_sim_matrix_, # [..., M, M]
-                source_sim_vect, outcome_sim_vect, # [..., M]
-                reflexive_sim_source=source_sim_reflexive, reflexive_sim_outcome=outcome_sim_reflexive, # [...] or []
-                exclude_impossible=False)
-            
-            # from [n, n, n] to [n, n, n+1]
-            updated_meatcube.cube_ = torch.cat([updated_meatcube.cube, inv_abi], dim=-1)
-
-            # from [n, n].[n, 1] to [n, n+1]: add the symmetric component of the vector where the diagonal will be
-            inv_aic = torch.cat([inv_aic, inv_aii.unsqueeze(-1)], dim=-1)
-            # from [n, n, n+1].[n, n+1] to [n, n+1, n+1]
-            updated_meatcube.cube_ = torch.cat([updated_meatcube.cube, inv_aic.unsqueeze(-2)], dim=-2)
-
-            # from [n].[] to [n+1]
-            inv_iic = torch.cat([inv_iic, inv_iii.unsqueeze(-1)], dim=-1)
-            # from [n, n].[n, 1] to [n, n+1] to [n+1, n+1]
-            inv_ibc = torch.cat([inv_ibc, inv_ibi.unsqueeze(-1)], dim=-1)
-            inv_ibc = torch.cat([inv_ibc, inv_iic.unsqueeze(-2)], dim=-2)
-            # from [n, n+1, n+1].[n+1, n+1] to [n+1, n+1, n+1]
-            updated_meatcube.cube_ = torch.cat([updated_meatcube.cube, inv_ibc.unsqueeze(-3)], dim=-3)
-
-        check_is_fitted(updated_meatcube)
-        return updated_meatcube
+        check_is_fitted(copy)
+        return copy
     
-    def to_device(self, device: Literal["auto"] | str | torch.device = "auto"):
+    def to_device(self, device: Literal["auto"] | str | torch.device = "auto", inplace=True) -> Tuple[AbstractEnergyBasedClassifierTorch, torch.device | str]:
         if device == "auto":
             if torch.cuda.is_available():
-                try: 
+                try:  # check if it is really available for use
                     torch.Tensor([0,1,2], device="cuda")
-                    self.device_ = torch.device("cuda")
+                    device = torch.device("cuda")
                 except RuntimeError:
                     # TODO: add log message
-                    self.device_ = torch.device("cpu")
+                    device = torch.device("cpu")
             else:
-                self.device_ = torch.device("cpu")
+                device = torch.device("cpu")
+
+        if inplace:
+            model = self
+            model.device_ = device
+            
         else:
-            self.device_ = device
+            model = self.clone(refit=True, refit_kwargs={"device": device})
 
-        for param in list(self.__dict__.keys()): #[self.X_sim_matrix_, self.y_sim_matrix_, self.y_sim_vectors_, self.cube_]:
-            if param.endswith("_") and getattr(self, param) is not None and isinstance(getattr(self, param), torch.Tensor):
-                setattr(self, param, getattr(self, param).to(self.device_))
+        for param in model.parameters(): #[self.X_sim_matrix_, self.y_sim_matrix_, self.y_sim_vectors_, self.cube_]:
+            if param is not None:
+                param = param.to(model.device_)
 
-        return self.device_
+        return model, model.device_
 
 
 ###########################################################
@@ -287,7 +284,7 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
             strategy: Literal["MCE", "hinge"]="hinge",
             margin: float=0.1,
             as_tensor=False,
-            tqdm_verbose=TQDM_VERBOSE,
+            tqdm_verbose=True,
             **kwargs) -> np.ndarray[float]:
         """Compute the competence of the case base w.r.t a test set, or if an `index` is provided, the contribution of \
         the corresponding case to the competence.
@@ -400,7 +397,7 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
                                 batch_size,
                                 auto_batch_size=True,
                                 keep_on_cuda: Literal[True, False, "auto"] = True,
-                                tqdm_verbose=TQDM_VERBOSE,
+                                tqdm_verbose=False,
                                 **kwargs) -> np.ndarray[float]:
     
         backup_device = None
@@ -408,33 +405,25 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
             n_cb = len(self) # |CB|
             n_outcomes = self.y_sim_vectors_.size(0) # |R|
             n_ref = X_sim_vectors.size(0) # |S|
-            mem_source_sim_matrix_i =   estimate_mem_utilisation(self.X_sim_matrix_)  #dtype=self.X_sim_matrix_.dtype, size=[n_cb-1, n_cb-1])
-            mem_outcome_sim_matrix_i =  estimate_mem_utilisation(self.y_sim_matrix_)  #dtype=self.y_sim_matrix_.dtype, size=[n_cb-1, n_cb-1])
-            mem_source_sim_vectors_i =  estimate_mem_utilisation(X_sim_vectors)       #dtype=self.X_sim_matrix_.dtype, size=[n_ref, n_cb-1])
-            mem_outcome_sim_vectors_i = estimate_mem_utilisation(self.y_sim_vectors_) #dtype=self.y_sim_vectors_.dtype, size=[n_outcomes, n_cb-1])
-            mem_inversion_rates_i_ =    estimate_mem_utilisation(dtype=int, size=[n_ref, n_outcomes])
-            mem_gamma_i = MeATCubeEnergyComputations._estimate_memory_gamma_i(
-                self.X_sim_matrix_.unsqueeze(0).unsqueeze(0),
-                self.y_sim_matrix_.unsqueeze(0).unsqueeze(0), 
-                X_sim_vectors.unsqueeze(1),
-                self.y_sim_vectors_.unsqueeze(0))
-            #estimate_mem_utilisation(dtype=float, size=[n_ref, n_outcomes])
+            mem_source_sim_matrix_i =  estimate_mem_utilisation(dtype=self.X_sim_matrix_.dtype, size=[n_cb-1, n_cb-1])
+            mem_outcome_sim_matrix_i = estimate_mem_utilisation(dtype=self.y_sim_matrix_.dtype, size=[n_cb-1, n_cb-1])
+            mem_source_sim_vectors_i =  estimate_mem_utilisation(dtype=self.X_sim_matrix_.dtype, size=[n_ref, n_cb-1])
+            mem_outcome_sim_vectors_i = estimate_mem_utilisation(dtype=self.y_sim_vectors_.dtype, size=[n_outcomes, n_cb-1])
+            mem_inversion_rates_i_ = estimate_mem_utilisation(dtype=float, size=[n_ref, n_outcomes])
 
             # per batch, wrt. MeATCubeEnergyComputations._gamma_i()'s formula : [...] = |S|, |R|; [M] = |CB|-1
             # formula = batch_dims * (3 * [M, M] + 2 * [M]) * bool + (5 * batch_dims) * float
             #         = |S| * |R| * (3 * (|CB|-1)**2 + 2 (|CB|-1)) * bool + (5 * |S| * |R|) * float
             #         = batch_dims * (6 * [M, M] + 4 * [M]) * bool + (10 * batch_dims) * float
-            # mem_gamma_i = (
-            #       #estimate_mem_utilisation(dtype=int, size=[n_ref, n_outcomes, 3 * ((n_cb-1)**2) + (2 * (n_cb-1))]) # appears closer to actual consumption ...
-            #     #+ estimate_mem_utilisation(dtype=bool, size=[n_ref, n_outcomes, 3 * ((n_cb-1)**2) + (2 * (n_cb-1))])
-            #     + 2*estimate_mem_utilisation(dtype=bool, size=[n_ref, n_outcomes, (6 * ((n_cb-1)**2)) + (4 * (n_cb-1))])
-            #     + estimate_mem_utilisation(dtype=float, size=[5, n_ref, n_outcomes])
-            # )
+            mem_gamma_i = (
+                  #estimate_mem_utilisation(dtype=int, size=[n_ref, n_outcomes, 3 * ((n_cb-1)**2) + (2 * (n_cb-1))]) # appears closer to actual consumption ...
+                #+ estimate_mem_utilisation(dtype=bool, size=[n_ref, n_outcomes, 3 * ((n_cb-1)**2) + (2 * (n_cb-1))])
+                + 2*estimate_mem_utilisation(dtype=bool, size=[n_ref, n_outcomes, (6 * ((n_cb-1)**2)) + (4 * (n_cb-1))])
+                + estimate_mem_utilisation(dtype=float, size=[5, n_ref, n_outcomes])
+            )
             #mem_gamma_i *= 1.5 # extra 50% for safety reasons
 
-            operations = [mem_source_sim_matrix_i, mem_outcome_sim_matrix_i, mem_source_sim_vectors_i, mem_outcome_sim_vectors_i]
-            mem_batch_input = sum(operations) + max(operations) + mem_gamma_i 
-            # "sum + max" for the operations because "sum" counts the space to store the result and "max" counts the extra space to do the operation itself (usually the same amount)
+            mem_batch_input = mem_source_sim_matrix_i + mem_outcome_sim_matrix_i + mem_source_sim_vectors_i + mem_outcome_sim_vectors_i + mem_gamma_i 
 
             if keep_on_cuda == "auto":
                 keep_on_cuda = True
@@ -443,11 +432,7 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
             else:
                 fixed_overhead = mem_inversion_rates_i_
 
-            SAFETY_FACTOR = 4
-            mem_batch_input *= SAFETY_FACTOR
-            fixed_overhead *= SAFETY_FACTOR
-
-            # if tqdm_verbose: tqdm.write(torch.cuda.memory_summary(self.device_, True))
+            if tqdm_verbose: tqdm.write(torch.cuda.memory_summary(self.device_, True))
             torch.cuda.empty_cache()
             batch_size = estimate_batch_size(self.device_, mem_batch_input, fixed_overhead=fixed_overhead)
             #logger.info
@@ -455,16 +440,13 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
             if batch_size == 0:
                 backup_device = self.device_
                 self.to_device("cpu")
-                reflexive_sim_X = reflexive_sim_X.cpu()
-                reflexive_sim_y = reflexive_sim_y.cpu()
-                X_sim_vectors = X_sim_vectors.cpu()
-                batch_size = 1#len(index)
+                batch_size = len(index)
                 #raise torch.cuda.OutOfMemoryError()
-                if tqdm_verbose: tqdm.write(f"Auto batch size found not enough space on device, temporarily switching to CPU.\t(considering {mem_batch_input/(1024**2):.2f} MiB per batch and overhead of {fixed_overhead/(1024**2):.2f} MiB, {(fixed_overhead + batch_size*mem_batch_input)/(1024**2):.2f} MiB total)")
+                if tqdm_verbose: tqdm.write(f"Auto batch size found not enough space on device, temporarily switching to CPU.\t(considering {mem_batch_input/(1024**2):.2f} MiB per batch and overhead of {fixed_overhead/(1024**2):.2f} MiB)")
 
             else:
                 if tqdm_verbose: tqdm.write(f"Auto batch size: {batch_size}.\t(considering {mem_batch_input/(1024**2):.2f} MiB per batch and overhead of {fixed_overhead/(1024**2):.2f} MiB, {(fixed_overhead + batch_size*mem_batch_input)/(1024**2):.2f} MiB total)")
-        
+              
         inversion_rates_i = []
         index_batches = [index[i:i+batch_size] for i in range(0, len(index), batch_size)]
         for index_batch in index_batches:
@@ -472,34 +454,27 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
             source_sim_matrix_i = torch.stack([
                 remove_index(self.X_sim_matrix_, i, dims=[-1,-2])
                 for i in index_batch
-            ], dim=0).detach() ##29593600 bytes (*2 during computation)
+            ], dim=0).detach()
             outcome_sim_matrix_i = torch.stack([
                 remove_index(self.y_sim_matrix_, i, dims=[-1,-2])
                 for i in index_batch
-            ], dim=0).detach() ##29593600 bytes (*2 during computation)
+            ], dim=0).detach()
             source_sim_vectors_i = torch.stack([
                 remove_index(X_sim_vectors, i, dims=[-1])
                 for i in index_batch
-            ], dim=0).detach() ##9922560 bytes (*2 during computation)
+            ], dim=0).detach()
             outcome_sim_vectors_i = torch.stack([
                 remove_index(self.y_sim_vectors_, i, dims=[-1])
                 for i in index_batch
-            ], dim=0).detach() ##174080 bytes (*2 during computation)
+            ], dim=0).detach()
             # inversion_rates_i: [|index_batch|, |S|, |R|]
-            inversion_rates_i_ = MeATCubeEnergyComputations._gamma_i(
+            inversion_rates_i.append(MeATCubeEnergyComputations._gamma_i(
                 source_sim_matrix_i.unsqueeze(1).unsqueeze(1), # [|index_batch|, 1, 1, |CB|-1, |CB|-1]
                 outcome_sim_matrix_i.unsqueeze(1).unsqueeze(1), # [|index_batch|, 1, 1, |CB|-1, |CB|-1]
                 source_sim_vectors_i.unsqueeze(2), # [|index_batch|, |S|, 1, |CB|-1]
                 outcome_sim_vectors_i.unsqueeze(1), # [|index_batch|, 1, |R|, |CB|-1]
                 reflexive_sim_source=reflexive_sim_X.unsqueeze(0),
-                reflexive_sim_outcome=reflexive_sim_y.unsqueeze(0)).detach()
-            
-            if not keep_on_cuda: # put back on GPU if necessary
-                inversion_rates_i_ = inversion_rates_i_.cpu()
-
-            inversion_rates_i.append(inversion_rates_i_)
-            del source_sim_matrix_i, outcome_sim_matrix_i, source_sim_vectors_i, outcome_sim_vectors_i
-            torch.cuda.memory.empty_cache()
+                reflexive_sim_outcome=reflexive_sim_y.unsqueeze(0)).detach())
             
         if len(inversion_rates_i) > 1:
             inversion_rates_i = torch.cat(inversion_rates_i, dim=0)
@@ -508,9 +483,9 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
 
         if backup_device is not None:
             self.to_device(backup_device)
-            inversion_rates_i = inversion_rates_i.to(self.device_)
+            inversion_rates_i_ = inversion_rates_i_.to(self.device_)
         elif not keep_on_cuda: # put back on GPU if necessary
-            inversion_rates_i = inversion_rates_i.to(self.device_)
+            inversion_rates_i_ = inversion_rates_i_.to(self.device_)
         
         return inversion_rates_i
 
@@ -822,3 +797,9 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
             "requires_y": True,
             "X_types": ["2darray", "sparse", "categorical", "1dlabels", "2dlabels", "string"]
         }
+    
+
+if __name__ == "__main__":
+    model = AbstractEnergyBasedClassifierTorch(torch.add, torch.eq)
+
+    print(model.parameters())
