@@ -28,6 +28,13 @@ class CtCoATEnergyComputations(object):
         :param return_all: If true, instead of returning only the inversion cube, returns the comparison cube for the 
         source and the outcome similarities.
         :return: Float tensor with coordinates `[a,b,c]` for `1 - (σs(a,b) - σs(a,c)*(σr(a,b) - σr(a,c))`.
+
+        -------
+        Memory usage
+        -------
+        3 * _cubify: source_cube, outcome_cube, and cube that takes the same size
+            
+        i.e., batch_dims * 2 * [M, M, M] * sim_matrix.dtype + batch_dims * [M, M, M] * sim_matrix.float
         """
         # compute only if necessary
         if source_cube is None: source_cube = CtCoATEnergyComputations._cubify(source_sim)
@@ -59,6 +66,11 @@ class CtCoATEnergyComputations(object):
 
         :param sim_matrix: Tensor of the similarity matrix or stack of similarity matrices.
         :return: Tensor containing the cube (or an array of cubes) of boolean values.
+
+        -------
+        Memory usage
+        -------
+        batch_dims * [M, M, M] * sim_matrix.dtype
         """
         if sim_matrix.dim() >= 2 and sim_matrix.size(-1) == sim_matrix.size(-1):
             # sim_matrix: [M, M]
@@ -74,7 +86,7 @@ class CtCoATEnergyComputations(object):
     
     @staticmethod
     def _energies_i(sim_source: torch.Tensor, sim_outcome: torch.Tensor, new_sim_source: torch.Tensor, new_sim_outcome: torch.Tensor,
-                      reflexive_sim_source=1, reflexive_sim_outcome=1) -> (
+                      reflexive_sim_source=1, reflexive_sim_outcome=1, exclude_impossible=False) -> (
             Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]):
 
         """The idea is to compute the energies for every possible outcome, and make the choice of the right one only afterwards.
@@ -101,6 +113,12 @@ class CtCoATEnergyComputations(object):
         - gamma_ibc, gamma_aic, gamma_abi: Size: `[..., M, M]`
         - gamma_aii, gamma_ibi, gamma_iic: Size: `[..., M]`
         - gamma_iii: Size: `[...]`
+
+
+        -------
+        Memory usage
+        -------
+        batch_dims * (3 * ([M, M] + [M]) + 1) * float
         """
 
         """
@@ -175,8 +193,12 @@ class CtCoATEnergyComputations(object):
             delta_s=(sii - si), 
             delta_o=(oii - oi))
         
-        inv_aii = torch.ones_like(inv_iic)/2
-        inv_iii = torch.ones_like(inv_iic.select(-1, 0))/2
+        if not exclude_impossible:
+            inv_aii = torch.ones_like(inv_iic)/2
+            inv_iii = torch.ones_like(inv_iic.select(-1, 0))/2
+        else:
+            inv_aii = 1/2
+            inv_iii = 1/2
 
         return inv_ibc, inv_aic, inv_abi, inv_aii, inv_ibi, inv_iic, inv_iii
 
@@ -209,11 +231,19 @@ class CtCoATEnergyComputations(object):
         :param normalize: (Deprecated) If True, will normalize the competence by the cube of the CB size.
 
         :return: The competence of `CB` w.r.t the case `i`.
+
+        -------
+        Memory usage
+        -------
+        _energies_i + (6 * batch_dims) * float
+
+        i.e. batch_dims * (3 * [M, M] + 2 * [M] + 7) * float
         """
         inv_ibc, inv_aic, inv_abi, inv_aii, inv_ibi, inv_iic, inv_iii = CtCoATEnergyComputations._energies_i(
             sim_source, sim_outcome, # [..., M, M]
             new_sim_source, new_sim_outcome, # [..., M]
             reflexive_sim_source=reflexive_sim_source, reflexive_sim_outcome=reflexive_sim_outcome, # [...] or []
+            exclude_impossible=True,
             )
 
         # gamma_ibc, gamma_aic, gamma_abi: [..., M, M] -> [...]
@@ -224,7 +254,7 @@ class CtCoATEnergyComputations(object):
         # gamma_ibi, gamma_iic: [..., M] -> [...]
         gamma_ibi = inv_ibi.sum(dim=-1)
         gamma_iic = inv_iic.sum(dim=-1)
-        gamma_aii = inv_aii.sum(dim=-1) # cannot invert itself
+        gamma_aii = inv_iic.size(-1) * 1/2 #inv_aii.sum(dim=-1) # cannot invert itself
         gamma_iii = 1/2 # cannot invert itself, special case of gamma_aii
 
         return gamma_ibc + gamma_aic + gamma_abi + gamma_aii + gamma_ibi + gamma_iic + gamma_iii
@@ -244,15 +274,22 @@ class CtCoATEnergyComputations(object):
         Size: `[..., M, M]`. Coordinates: `σr[a,b] = σr(a,b) ∀a,b ∈ CB`.
 
         :return: The competence of `CB` w.r.t the case `i`.
+
+        -------
+        Memory usage
+        -------
+        _energies_i + (6 * batch_dims) * float
+
+        i.e. batch_dims * (3 * ([M-1, M-1] + [M-1]) + 7) * float
         """
 
         # rename in a short manner
-        sim_source, new_sim_source = pop_index(sim_source, i, dim=-1)  # [..., M+1, M], [..., M+1]
-        sim_outcome, new_sim_outcome = pop_index(sim_outcome, i, dim=-1)  # [..., M+1, M], [..., M+1]
-        sim_source = pop_index(sim_source, i, dim=-2)[0]  # [..., M, M]
-        sim_outcome = pop_index(sim_outcome, i, dim=-2)[0]  # [..., M, M]
-        new_sim_source, reflexive_sim_source=pop_index(new_sim_source, i, dim=-1)  # [..., M], [...]
-        new_sim_outcome, reflexive_sim_outcome=pop_index(new_sim_outcome, i, dim=-1)  # [..., M], [...]
+        sim_source, new_sim_source = pop_index(sim_source, i, dim=-1)  # [..., M-1, M], [..., M]
+        sim_outcome, new_sim_outcome = pop_index(sim_outcome, i, dim=-1)  # [..., M-1, M], [..., M]
+        sim_source = pop_index(sim_source, i, dim=-2)[0]  # [..., M-1, M-1]
+        sim_outcome = pop_index(sim_outcome, i, dim=-2)[0]  # [..., M-1, M-1]
+        new_sim_source, reflexive_sim_source=pop_index(new_sim_source, i, dim=-1)  # [..., M-1], [...]
+        new_sim_outcome, reflexive_sim_outcome=pop_index(new_sim_outcome, i, dim=-1)  # [..., M-1], [...]
 
         return CtCoATEnergyComputations._gamma_i(
             sim_source, sim_outcome,
@@ -273,6 +310,11 @@ class CtCoATEnergyComputations(object):
         :param normalize: (Deprecated) If True, will normalize the competence by the cube of the CB size.
 
         :return: The competence of `CB` w.r.t the case `i`.
+
+        -------
+        Memory usage
+        -------
+        i.e. batch_dims * (3 * [M, M] + 2 * [M]) * float
         """
         energies = (
             (cube.select(index=i, dim=-1).sum(dim=[-1,-2]) + # gamma_abi

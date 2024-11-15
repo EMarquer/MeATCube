@@ -12,7 +12,7 @@ from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 from meatcube2.models.AbstractEnergyBasedPredictor import ACaseBaseEnergyPredictor
 
 from .meatcube_torch_backend import MeATCubeEnergyComputations, NORMALIZE
-from ..utils import to_numpy_array, pairwise_dist, cart_dist
+from ..utils import to_numpy_array, pairwise_dist, cart_dist, estimate_batch_size, estimate_mem_utilisation
 from ..torch_utils import remove_index, append_symmetric
 from ..defaults import MEATCUBE_COMPETENCE_NORMALIZE_BY_MAX_COMPETENCE
 from .AbstractEnergyBasedClassifier import ACaseBaseEnergyClassifier, SourceSpaceElement, OutcomeSpaceElement
@@ -285,6 +285,7 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
             strategy: Literal["MCE", "hinge"]="hinge",
             margin: float=0.1,
             as_tensor=False,
+            tqdm_verbose=True,
             **kwargs) -> np.ndarray[float]:
         """Compute the competence of the case base w.r.t a test set, or if an `index` is provided, the contribution of \
         the corresponding case to the competence.
@@ -343,28 +344,17 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
 
         # --------- All the cases at once ---------
         index = list(range(len(self)))
-        try:
-            batch_size = len(index)
-            inversion_rates_i = self._decrement_scores_batched(
-                index,
-                reflexive_sim_X,
-                reflexive_sim_y,
-                X_sim_vectors,
-                batch_size=batch_size,
-                auto_batch_size=False
-            )
-        except torch.cuda.OutOfMemoryError:
-            batch_size = 1
-            # batch_size_power = int(np.floor(np.log2(len(index))).item())
-            # batch_size = 2**batch_size_power
-            inversion_rates_i = self._decrement_scores_batched(
-                index,
-                reflexive_sim_X,
-                reflexive_sim_y,
-                X_sim_vectors,
-                batch_size=batch_size,
-                auto_batch_size=False
-            )
+        batch_size = len(index)
+        inversion_rates_i = self._decrement_scores_batched(
+            index,
+            reflexive_sim_X,
+            reflexive_sim_y,
+            X_sim_vectors,
+            batch_size=batch_size,
+            auto_batch_size=True,
+            tqdm_verbose=tqdm_verbose
+        )
+        
 
         # compare the true outcome with the other outcomes
         true_outcome_index = self._outcome_index(y_ref)
@@ -407,51 +397,97 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
                                 X_sim_vectors,
                                 batch_size,
                                 auto_batch_size=True,
+                                keep_on_cuda: Literal[True, False, "auto"] = True,
+                                tqdm_verbose=False,
                                 **kwargs) -> np.ndarray[float]:
-        try:
-            inversion_rates_i = []
-            index_batches = [index[i:i+batch_size] for i in range(0, len(index), batch_size)]
-            for index_batch in index_batches:
-            #for index_batch in index_batches:
-                source_sim_matrix_i = torch.stack([
-                    remove_index(self.X_sim_matrix_, i, dims=[-1,-2])
-                    for i in index_batch
-                ], dim=0).detach()
-                outcome_sim_matrix_i = torch.stack([
-                    remove_index(self.y_sim_matrix_, i, dims=[-1,-2])
-                    for i in index_batch
-                ], dim=0).detach()
-                source_sim_vectors_i = torch.stack([
-                    remove_index(X_sim_vectors, i, dims=[-1])
-                    for i in index_batch
-                ], dim=0).detach()
-                outcome_sim_vectors_i = torch.stack([
-                    remove_index(self.y_sim_vectors_, i, dims=[-1])
-                    for i in index_batch
-                ], dim=0).detach()
-                # inversion_rates_i: [|index_batch|, |S|, |R|]
-                inversion_rates_i.append(MeATCubeEnergyComputations._gamma_i(
-                    source_sim_matrix_i.unsqueeze(1).unsqueeze(1), # [|index_batch|, 1, 1, |CB|-1, |CB|-1]
-                    outcome_sim_matrix_i.unsqueeze(1).unsqueeze(1), # [|index_batch|, 1, 1, |CB|-1, |CB|-1]
-                    source_sim_vectors_i.unsqueeze(2), # [|index_batch|, |S|, 1, |CB|-1]
-                    outcome_sim_vectors_i.unsqueeze(1), # [|index_batch|, 1, |R|, |CB|-1]
-                    reflexive_sim_source=reflexive_sim_X.unsqueeze(0),
-                    reflexive_sim_outcome=reflexive_sim_y.unsqueeze(0)).detach())
+    
+        backup_device = None
+        if auto_batch_size:
+            n_cb = len(self) # |CB|
+            n_outcomes = self.y_sim_vectors_.size(0) # |R|
+            n_ref = X_sim_vectors.size(0) # |S|
+            mem_source_sim_matrix_i =  estimate_mem_utilisation(dtype=self.X_sim_matrix_.dtype, size=[n_cb-1, n_cb-1])
+            mem_outcome_sim_matrix_i = estimate_mem_utilisation(dtype=self.y_sim_matrix_.dtype, size=[n_cb-1, n_cb-1])
+            mem_source_sim_vectors_i =  estimate_mem_utilisation(dtype=self.X_sim_matrix_.dtype, size=[n_ref, n_cb-1])
+            mem_outcome_sim_vectors_i = estimate_mem_utilisation(dtype=self.y_sim_vectors_.dtype, size=[n_outcomes, n_cb-1])
+            mem_inversion_rates_i_ = estimate_mem_utilisation(dtype=float, size=[n_ref, n_outcomes])
+
+            # per batch, wrt. MeATCubeEnergyComputations._gamma_i()'s formula : [...] = |S|, |R|; [M] = |CB|-1
+            # formula = batch_dims * (3 * [M, M] + 2 * [M]) * bool + (5 * batch_dims) * float
+            #         = |S| * |R| * (3 * (|CB|-1)**2 + 2 (|CB|-1)) * bool + (5 * |S| * |R|) * float
+            #         = batch_dims * (6 * [M, M] + 4 * [M]) * bool + (10 * batch_dims) * float
+            mem_gamma_i = (
+                  #estimate_mem_utilisation(dtype=int, size=[n_ref, n_outcomes, 3 * ((n_cb-1)**2) + (2 * (n_cb-1))]) # appears closer to actual consumption ...
+                #+ estimate_mem_utilisation(dtype=bool, size=[n_ref, n_outcomes, 3 * ((n_cb-1)**2) + (2 * (n_cb-1))])
+                + 2*estimate_mem_utilisation(dtype=bool, size=[n_ref, n_outcomes, (6 * ((n_cb-1)**2)) + (4 * (n_cb-1))])
+                + estimate_mem_utilisation(dtype=float, size=[5, n_ref, n_outcomes])
+            )
+            #mem_gamma_i *= 1.5 # extra 50% for safety reasons
+
+            mem_batch_input = mem_source_sim_matrix_i + mem_outcome_sim_matrix_i + mem_source_sim_vectors_i + mem_outcome_sim_vectors_i + mem_gamma_i 
+
+            if keep_on_cuda == "auto":
+                keep_on_cuda = True
+            if keep_on_cuda:
+                fixed_overhead = mem_inversion_rates_i_ * len(index)
+            else:
+                fixed_overhead = mem_inversion_rates_i_
+
+            if tqdm_verbose: tqdm.write(torch.cuda.memory_summary(self.device_, True))
+            torch.cuda.empty_cache()
+            batch_size = estimate_batch_size(self.device_, mem_batch_input, fixed_overhead=fixed_overhead)
+            #logger.info
+            
+            if batch_size == 0:
+                backup_device = self.device_
+                self.to_device("cpu")
+                batch_size = len(index)
+                #raise torch.cuda.OutOfMemoryError()
+                if tqdm_verbose: tqdm.write(f"Auto batch size found not enough space on device, temporarily switching to CPU.\t(considering {mem_batch_input/(1024**2):.2f} MiB per batch and overhead of {fixed_overhead/(1024**2):.2f} MiB)")
+
+            else:
+                if tqdm_verbose: tqdm.write(f"Auto batch size: {batch_size}.\t(considering {mem_batch_input/(1024**2):.2f} MiB per batch and overhead of {fixed_overhead/(1024**2):.2f} MiB, {(fixed_overhead + batch_size*mem_batch_input)/(1024**2):.2f} MiB total)")
+              
+        inversion_rates_i = []
+        index_batches = [index[i:i+batch_size] for i in range(0, len(index), batch_size)]
+        for index_batch in index_batches:
+        #for index_batch in index_batches:
+            source_sim_matrix_i = torch.stack([
+                remove_index(self.X_sim_matrix_, i, dims=[-1,-2])
+                for i in index_batch
+            ], dim=0).detach()
+            outcome_sim_matrix_i = torch.stack([
+                remove_index(self.y_sim_matrix_, i, dims=[-1,-2])
+                for i in index_batch
+            ], dim=0).detach()
+            source_sim_vectors_i = torch.stack([
+                remove_index(X_sim_vectors, i, dims=[-1])
+                for i in index_batch
+            ], dim=0).detach()
+            outcome_sim_vectors_i = torch.stack([
+                remove_index(self.y_sim_vectors_, i, dims=[-1])
+                for i in index_batch
+            ], dim=0).detach()
+            # inversion_rates_i: [|index_batch|, |S|, |R|]
+            inversion_rates_i.append(MeATCubeEnergyComputations._gamma_i(
+                source_sim_matrix_i.unsqueeze(1).unsqueeze(1), # [|index_batch|, 1, 1, |CB|-1, |CB|-1]
+                outcome_sim_matrix_i.unsqueeze(1).unsqueeze(1), # [|index_batch|, 1, 1, |CB|-1, |CB|-1]
+                source_sim_vectors_i.unsqueeze(2), # [|index_batch|, |S|, 1, |CB|-1]
+                outcome_sim_vectors_i.unsqueeze(1), # [|index_batch|, 1, |R|, |CB|-1]
+                reflexive_sim_source=reflexive_sim_X.unsqueeze(0),
+                reflexive_sim_outcome=reflexive_sim_y.unsqueeze(0)).detach())
+            
+        if len(inversion_rates_i) > 1:
             inversion_rates_i = torch.cat(inversion_rates_i, dim=0)
+        else:
+            inversion_rates_i = inversion_rates_i[0]
+
+        if backup_device is not None:
+            self.to_device(backup_device)
+            inversion_rates_i_ = inversion_rates_i_.to(self.device_)
+        elif not keep_on_cuda: # put back on GPU if necessary
+            inversion_rates_i_ = inversion_rates_i_.to(self.device_)
         
-        except torch.cuda.OutOfMemoryError as e:
-            if auto_batch_size and batch_size > 1:
-                inversion_rates_i = self._decrement_scores_batched(
-                                    index,
-                                    reflexive_sim_X,
-                                    reflexive_sim_y,
-                                    X_sim_vectors,
-                                    batch_size=batch_size//2,
-                                    auto_batch_size=auto_batch_size,
-                                    **kwargs)
-                self.inferred_batch_size_ = batch_size # update the batch sisze
-                return inversion_rates_i
-            else: raise e
         return inversion_rates_i
 
 ###########################################################

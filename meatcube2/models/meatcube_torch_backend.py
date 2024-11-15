@@ -27,6 +27,13 @@ class MeATCubeEnergyComputations(object):
         :param return_all: If true, instead of returning only the inversion cube, returns the comparison cube for the 
         source and the outcome similarities.
         :return: Boolean tensor with coordinates `[a,b,c]` for `σs(a,b) ≥ σs(a,c) ∧ σr(a,b) < σr(a,c)`.
+
+        -------
+        Memory usage
+        -------
+        2 * _cubify (source_cube, outcome_cube) + boolean cube 
+            
+        i.e., batch_dims * 2 * [M, M, M] * sim_matrix.dtype + batch_dims * [M, M, M] * sim_matrix.bool
         """
         #n = source_sim.size(0)
         #self.s_cube = source_sim.view((n, n, 1)) >= source_sim.view((n, 1, n))
@@ -65,6 +72,11 @@ class MeATCubeEnergyComputations(object):
         :param sim_matrix: Tensor of the similarity matrix or stack of similarity matrices.
         :param comparator: Either 'source' or 'outcome'.
         :return: Tensor containing the cube (or an array of cubes) of boolean values.
+
+        -------
+        Memory usage
+        -------
+        batch_dims * [M, M, M] * sim_matrix.dtype
         """
         comparator = (lambda ab, ac: ab >= ac) if comparator=="source" else (lambda ab, ac: ab < ac)
         if sim_matrix.dim() >= 2 and sim_matrix.size(-1) == sim_matrix.size(-1):
@@ -111,6 +123,15 @@ class MeATCubeEnergyComputations(object):
         - gamma_ibc, gamma_aic, gamma_abi: Size: `[..., M, M]`
         - gamma_aii, gamma_ibi, gamma_iic: Size: `[..., M]`
         - gamma_iii: Size: `[...]`
+
+
+
+        -------
+        Memory usage
+        -------
+        batch_dims * (6 * [M, M] + 6 * [M]) * bool
+        OR
+        batch_dims * (6 * [M, M] + 4 * [M]) * bool
         """
         # rename in a short manner
         s=sim_source  # [..., M, M]
@@ -178,6 +199,13 @@ class MeATCubeEnergyComputations(object):
         :param normalize: (Deprecated) If True, will normalize the competence by the cube of the CB size.
 
         :return: The competence of `CB` w.r.t the case `i`.
+
+        -------
+        Memory usage
+        -------
+        _inversions_i + (2*5 * batch_dims) * float
+
+        batch_dims * (6 * [M, M] + 4 * [M]) * bool + (10 * batch_dims) * float
         """
         inv_ibc, inv_aic, inv_abi, inv_aii, inv_ibi, inv_iic, inv_iii = MeATCubeEnergyComputations._inversions_i(
             sim_source, sim_outcome, # [..., M, M]
@@ -186,13 +214,17 @@ class MeATCubeEnergyComputations(object):
             exclude_impossible=True)
 
         # gamma_ibc, gamma_aic, gamma_abi: [..., M, M] -> [...]
-        gamma_ibc = inv_ibc.sum(dim=[-2,-1]) 
-        gamma_aic = inv_aic.sum(dim=[-2,-1]) 
-        gamma_abi = inv_abi.sum(dim=[-2,-1]) 
+        from tqdm.auto import tqdm
+        m0 = torch.cuda.memory_allocated() / 1024**2
+        gamma_ibc = inv_ibc.sum(dim=[-2,-1], dtype=int) 
+        m1 = torch.cuda.memory_allocated() / 1024**2
+        tqdm.write(f"{m0/1024:>9.2}GiB {m1-m0:>9.2}MiB , {gamma_ibc.size()}, {inv_ibc.size()}")
+        gamma_aic = inv_aic.sum(dim=[-2,-1], dtype=int) 
+        gamma_abi = inv_abi.sum(dim=[-2,-1], dtype=int) 
         
         # gamma_ibi, gamma_iic: [..., M] -> [...]
-        gamma_ibi = inv_ibi.sum(dim=-1)
-        gamma_iic = inv_iic.sum(dim=-1)
+        gamma_ibi = inv_ibi.sum(dim=-1, dtype=int)
+        gamma_iic = inv_iic.sum(dim=-1, dtype=int)
         
         gamma_aii = 0 # cannot invert itself
         gamma_iii = 0 # cannot invert itself, special case of gamma_aii

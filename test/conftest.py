@@ -87,7 +87,7 @@ def iris_split(X, y, y_values) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, p
 
 
 @pytest.fixture(scope="module")
-def manual_energy():
+def manual_cb():
     X_cb = np.array([[-1,0],[1,0]])
     y_cb = np.array([1,0])
 
@@ -103,8 +103,19 @@ def manual_energy():
     manual_energy_["X"] = X
     manual_energy_["y"] = y
 
+    return [manual_energy_]
+
+@pytest.fixture(scope="module")
+def manual_energy_EnergyKNN(manual_cb):
+    manual_energy_ = {**manual_cb[0]}
+
+    X_cb = manual_energy_["CB X"]
+    y_cb = manual_energy_["CB y"]
+    X = manual_energy_["X"]
+    y = manual_energy_["y"]
+
     # energy kNN
-    manual_energy_["EnergyKNN"] = dict()
+    manual_energy_["k"] = dict()
     EnergyKNN_energy_1nn = lambda x, y: 1-1*(
         int(y == 1) if npl.norm(x - X_cb[0]) <= npl.norm(x - X_cb[1]) else int(y == 0)
     )
@@ -141,7 +152,7 @@ def manual_energy():
     k=2: EkNN() = 1
 
     """
-    manual_energy_["EnergyKNN"][1] = {
+    manual_energy_["k"][1] = {
         "energy_cb": 1,
         "epsilon": 1e-6,
         "energy_case_new": [
@@ -153,7 +164,7 @@ def manual_energy():
             1, # EkNN([1,0],  0) for a CB with only ([-1,0], 1) inside
         ]
     }
-    manual_energy_["EnergyKNN"][2] = {
+    manual_energy_["k"][2] = {
         "energy_cb": 1,
         "epsilon": 1e-6,
         "energy_case_new": [
@@ -165,7 +176,16 @@ def manual_energy():
             1, # EkNN([1,0],  0) for a CB with only ([-1,0], 1) inside
         ]
     }
+    return [manual_energy_]
 
+@pytest.fixture(scope="module")
+def manual_energy_CtCoAT(manual_cb):
+    manual_energy_ = {**manual_cb[0]}
+
+    X_cb = manual_energy_["CB X"]
+    y_cb = manual_energy_["CB y"]
+    X = manual_energy_["X"]
+    y = manual_energy_["y"]
 
     # CtCoAT
     # with |CB|=2, 
@@ -349,26 +369,19 @@ def manual_energy():
                                   np.append(X_cb, values=X_.reshape(1, len(X_)), axis=0), np.append(y_cb, y_.reshape(1), axis=0))
         return Gamma_CB_t - Gamma_CB
 
-    print("\nfadi   ", [
-            CtCoAT_energy_fadi(X_, y_)
-            for X_, y_ in zip(X, y)
-        ])
-    print("esteban", [
-            CtCoAT_energy_esteban(X_, y_)
-            for X_, y_ in zip(X, y)
-        ])
-    print("greedy ", [
-            CtCoAT_energy(X_, y_)
-            for X_, y_ in zip(X, y)
-        ])
+    CtCoAT_hinge_fadi = lambda x, y, hinge_margin_: max(0,hinge_margin_ - 5*(euclidean_sim(x,X_cb[1]) - euclidean_sim(x,X_cb[0]))*(class_equality_sim(y,y_cb[1]) - class_equality_sim(y,y_cb[0])))
 
-    manual_energy_["CtCoAT"] = {
+    manual_energy_ = {**manual_energy_,
         "energy_cb": 2 + np.exp(-2)*2,
         "epsilon": 1e-6,
         "energy_case_new": [
             CtCoAT_energy(X_, y_)
             for X_, y_ in zip(X, y)
         ],
+        "hinge_case_new": {hinge_margin_*1e-3: [
+            CtCoAT_hinge_fadi(X_, y_, hinge_margin_*1e-3)
+            for X_, y_ in zip(X, y)
+        ] for hinge_margin_ in range(1,10)},
     }
 
     return [manual_energy_]

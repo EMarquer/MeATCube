@@ -29,42 +29,42 @@ def class_equality_sim(y1,y2):
 
 
 
-def test_manual_energy_cb(manual_energy):
+def test_manual_energy_cb(manual_energy_EnergyKNN):
         # energy of the case
-    for manual_energy_ in manual_energy:
-        ks = manual_energy_["EnergyKNN"].keys()
+    for manual_energy_ in manual_energy_EnergyKNN:
+        ks = manual_energy_["k"].keys()
         for k in ks:
             cb = EnergyKNN(euclidean_sim, class_equality_sim, k)
             cb.fit(manual_energy_["CB X"], manual_energy_["CB y"])
             calculated_e = cb.energy_cb()
-            e = manual_energy_["EnergyKNN"][k]["energy_cb"]
-            assert abs(calculated_e - e) <= manual_energy_["EnergyKNN"][k]["epsilon"], f'{calculated_e} != {e}'        
+            e = manual_energy_["k"][k]["energy_cb"]
+            assert abs(calculated_e - e) <= manual_energy_["k"][k]["epsilon"], f'{calculated_e} != {e}'        
     
-def test_manual_energy_case_new(manual_energy):
+def test_manual_energy_case_new(manual_energy_EnergyKNN):
         # energy of the case
-    for manual_energy_ in manual_energy:
-        ks = manual_energy_["EnergyKNN"].keys()
+    for manual_energy_ in manual_energy_EnergyKNN:
+        ks = manual_energy_["k"].keys()
         for k in ks:
             cb = EnergyKNN(euclidean_sim, class_equality_sim, k)
             cb.fit(manual_energy_["CB X"], manual_energy_["CB y"])
-            for X_, y_, e in zip(manual_energy_["X"], manual_energy_["y"], manual_energy_["EnergyKNN"][k]["energy_case_new"]):
+            for X_, y_, e in zip(manual_energy_["X"], manual_energy_["y"], manual_energy_["k"][k]["energy_case_new"]):
                 calculated_e = cb.energy_case_new(X_, y_)
-                assert abs(calculated_e - e) <= manual_energy_["EnergyKNN"][k]["epsilon"], f"error of {calculated_e - e}: |{calculated_e=} - {e=}|"
+                assert abs(calculated_e - e) <= manual_energy_["k"][k]["epsilon"], f"error of {calculated_e - e}: |{calculated_e=} - {e=}|"
         
-def test_manual_1nn_mask(manual_energy):
+def test_manual_1nn_mask(manual_energy_EnergyKNN):
     """Check that for the case in the CB, KNNEnergyComputations.knn_mask for k=1 produces a mask with True on the diagonal.
     
     This corresponds to checking that each case is its nearest neighbor, which should be true.
     """
-    for manual_energy_ in manual_energy:
+    for manual_energy_ in manual_energy_EnergyKNN:
         cb = EnergyKNN(euclidean_sim, class_equality_sim, 1, precompute_sim_matrix=True)
         cb.fit(manual_energy_["CB X"], manual_energy_["CB y"])
         mask = KNNEnergyComputations.knn_mask(cb.X_sim_matrix_, k=1)
         assert (mask.cpu() == torch.eye(len(cb), dtype=bool)).all(), f"{mask.cpu()} != {torch.eye(len(cb), dtype=bool)}"
            
-def test_manual_maxnn_mask(manual_energy):
+def test_manual_maxnn_mask(manual_energy_EnergyKNN):
     """Check if for any input X, KNNEnergyComputations.knn_mask produces a mask full of True when k is the size of the CB"""
-    for manual_energy_ in manual_energy:
+    for manual_energy_ in manual_energy_EnergyKNN:
         cb = EnergyKNN(euclidean_sim, class_equality_sim, len(manual_energy_["CB y"]), precompute_sim_matrix=True)
         cb.fit(manual_energy_["CB X"], manual_energy_["CB y"])
         

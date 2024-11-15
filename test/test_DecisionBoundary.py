@@ -9,7 +9,7 @@ from sklearn.utils.estimator_checks import check_estimator
 # load meatcube
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from meatcube2.meatcube_torch import MeATCubeCB
+from meatcube2.models.meatcube_torch import MeATCubeCB
 
 @pytest.mark.xfail
 @pytest.mark.parametrize('case_index', [0])

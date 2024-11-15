@@ -34,8 +34,70 @@ def to_numpy_array(values) -> np.ndarray:
         except ValueError: # non-float array-like
             return np.array(values)
         
+def estimate_mem_utilisation(tensor: torch.Tensor = None, size: Union[int, torch.Size, Iterable] = None, dtype: Union[type, torch.dtype] = None) -> int :
+    """Estimates the size in bytes for a given tensor"""
+    assert tensor is not None or (size is not None and dtype is not None)
+    if dtype is not None:
+        element_size = torch.tensor([1], dtype=dtype).element_size()
+    else:
+        element_size = tensor.element_size()
 
+    if size is not None:
+        if isinstance(size, int):
+            nelement = size
+        elif isinstance(size, torch.Size):
+            nelement = 1
+            for i in size: nelement*=i
+        elif isinstance(size, Iterable):
+            nelement = 1
+            for i in size: nelement*=i
+        else:
+            raise ValueError(f"Unknown handling for size {size} of type {type(size)}, expected int, torch.Size, or iterable of ints")
+    else:
+        nelement = tensor.nelement()
+    return element_size * nelement
 
+def check_mem_available(device: torch.device, bytes: int) -> bool:
+    if device == "cuda" or (isinstance(device, torch.device) and device.type == "cuda"):
+        free, total = torch.cuda.mem_get_info(device)
+        return bytes <= free
+    else:
+        import psutil
+        free = psutil.virtual_memory()
+        return bytes <= free
+
+def estimate_batch_size(device: torch.device, batch_element_bytes: int, max_batch_size: int=2**20, fixed_overhead: int=0) -> int:
+    """Given a memory estimate finds the largest batch size (a power of 2) that can fit in the memory of the device.
+    
+    The batch size is the number of repetitions of the batch element that can fit in the memory.
+
+    Parameters
+    ----------
+    device : torch.device
+        device to check
+    batch_element_bytes : int
+        size/estimated memory consumption of one element in the batch
+    max_batch_size : int
+        max value to try for batch size, ensures termination of the loop
+    fixed_overhead : int
+        constant value added to the memory consumption
+
+    See also
+    --------
+    estimate_mem_utilisation :
+        useful to estimate the number of bytes of one element in the batch
+
+    Returns
+    -------
+    Tuple[int, bool]
+        found batch size, or 0 if there is not enough space to put even one element of the batch on GPU
+    """
+    if not check_mem_available(device, (batch_element_bytes) + fixed_overhead):
+        return 0
+    batch_size = 1
+    while check_mem_available(device, (batch_size * batch_element_bytes) + fixed_overhead) and batch_size < max_batch_size:
+        batch_size *= 2
+    return batch_size // 2 # undo the last multiplication, as it resulted in a not-enough-memory decision
 
 # def torch_cdist():
 #     pass

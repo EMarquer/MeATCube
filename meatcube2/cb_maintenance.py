@@ -218,9 +218,13 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
             self.results_[-1]["fit_time"] = t()
             if self.memorize_estimators:
                 # un-CUDA the estimator to be stored
-                self.estimator = estimator
-                if "device" in self.estimator.__dict__.keys():
+                if "device_" in self.estimator.__dict__.keys():
+                    self.estimator = clone(estimator)
+                    device = estimator.device_
                     estimator.to_device("cpu")
+                    self.estimator.to_device(device)
+                else:
+                    self.estimator = estimator
                 self.estimators_.append(estimator)
             if self.scores_[-1] > self.best_score_: # update best model
                 self.best_score_ = self.scores_[-1]

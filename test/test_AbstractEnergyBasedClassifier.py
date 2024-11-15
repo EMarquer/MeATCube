@@ -8,5 +8,5 @@
 # # load meatcube
 # import sys, os
 # sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-# from meatcube2.AbstractEnergyBasedClassifier import ACaseBaseEnergyClassifier
+# from meatcube2.models.AbstractEnergyBasedClassifier import ACaseBaseEnergyClassifier
 

@@ -493,24 +493,38 @@ class ACaseBaseEnergyClassifier(BaseEstimator, ClassifierMixin, ACaseBaseEnergyP
             return_energies=True)
         
         # assume the gold outcome is predicted
+        # sorted_energies, energies: [|test_cases|, |self.classes_|]
+        # gold_energies: [|test_cases|]
+        # next_best_energies: [|test_cases|]
+        # predicted_outcomes: [|test_cases|]
         sorted_energies = np.sort(energies, axis=len(energies.shape)-1)
         gold_energies, next_best_energies = sorted_energies[:,0], sorted_energies[:,1]
 
         # find where the predicted outcome is not the gold
         # in those cases, the energy of the gold is not the best predicted energy, so the value in gold_energies is the 
         # one of the next best outcome and the value in gold_energies must be replaced
-        fail_mask = np.not_equal(test_cases_outcomes, predicted_outcomes)
+        fail_mask = np.not_equal(test_cases_outcomes, predicted_outcomes) # [|test_cases|]
         if fail_mask.any():
-            next_best_energies[fail_mask] = gold_energies[fail_mask]
+            next_best_energies[fail_mask] = gold_energies[fail_mask] # [|fails|]
+            test_cases_outcomes = (test_cases_outcomes if isinstance(test_cases_outcomes, np.ndarray) else np.ndarray(test_cases_outcomes))
+
             # if the gold outcome is among known outcomes, find and use the corresponding energy
-            known_mask = np.vectorize(self.classes_.__contains__)(test_cases_outcomes[fail_mask])
+            known_mask = np.vectorize(self.classes_.__contains__)(test_cases_outcomes[fail_mask]) # [|fails|]
+            fail_known_mask, fail_unknown_mask = np.copy(fail_mask), np.copy(fail_mask)
+            np.putmask(fail_known_mask, fail_mask, known_mask)
+            np.putmask(fail_unknown_mask, fail_mask, ~known_mask)
+
             if np.count_nonzero(known_mask) > 0:
-                gold_ids = np.vectorize(self.classes_.index)(test_cases_outcomes[fail_mask][known_mask])
-                gold_energies[fail_mask][known_mask] = energies[fail_mask][known_mask,gold_ids]
+                gold_ids = np.vectorize(self.classes_.index)(test_cases_outcomes[fail_known_mask])
+                gold_energies[fail_known_mask] = energies[fail_known_mask,gold_ids]
             # if the gold outcome is not among known outcomes, predict the corresponding energy
             if np.count_nonzero(~known_mask) > 0: 
-                gold_energies[fail_mask][known_mask] = np.fromiter(
-                    self.energy_case_new(X_, y_) for X_, y_ in zip(test_cases_sources[fail_mask][known_mask], test_cases_outcomes[fail_mask][known_mask])
+                test_cases_sources = (test_cases_sources if isinstance(test_cases_sources, np.ndarray) else np.ndarray(test_cases_sources))
+                assert test_cases_outcomes.shape[0] == test_cases_sources.shape[0], f"{test_cases_outcomes.shape}[0] != {test_cases_sources.shape}[0]"
+                test_cases_outcomes[fail_unknown_mask]
+                test_cases_sources[fail_unknown_mask]
+                gold_energies[fail_unknown_mask] = np.fromiter(
+                    self.energy_case_new(X_, y_) for X_, y_ in zip(test_cases_sources[fail_unknown_mask], test_cases_outcomes[fail_unknown_mask])
                 )
 
         # from the energies, we can now compute the MCE:
