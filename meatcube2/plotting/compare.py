@@ -83,6 +83,7 @@ def plot_dataset_model_grid(datasets_split: Union[List[Tuple[Any, Any]], List[Tu
                             figure:plt.Figure=None,
                             axes: plt.Axes=None,
                             fit_estimators=True,
+                            size_as_decrement_score=False,
                             DecisionBoundaryDisplay_kwargs=None) -> Tuple[plt.Figure, plt.Axes]:
     """_summary_
 
@@ -109,6 +110,8 @@ def plot_dataset_model_grid(datasets_split: Union[List[Tuple[Any, Any]], List[Tu
         _description_, by default None
     fit_estimators : bool, optional
         _description_, by default True
+    size_as_decrement_score : bool, optional
+        _description_, by default False
     DecisionBoundaryDisplay_kwargs : _type_, optional
         _description_, by default None
 
@@ -259,16 +262,32 @@ def plot_dataset_model_grid(datasets_split: Union[List[Tuple[Any, Any]], List[Tu
                     except AttributeError:
                         _X = clf._X
                     _y = clf._y
-                    scatter = ax.scatter(
-                        x=_X[:, 0],
-                        y=_X[:, 1],
-                        c=_y,
-                        cmap=cm_bright,
-                        edgecolors="k",
-                        alpha=0.6,
-                        marker="o",
-                        label="CB"
-                    )
+                    if size_as_decrement_score:
+                        sizes = clf.decrement_scores(X_ref, y_ref)
+                        s = ((sizes - sizes.min()) / (sizes.max() - sizes.min())) * 20 + 10
+                        s = np.nan_to_num(s, nan=30)
+                        scatter = ax.scatter(
+                            x=_X[:, 0],
+                            y=_X[:, 1],
+                            c=_y,
+                            cmap=cm_bright,
+                            edgecolors="k",
+                            alpha=0.6,
+                            marker="o",
+                            label="CB",
+                            s= s
+                        )
+                    else:
+                        scatter = ax.scatter(
+                            x=_X[:, 0],
+                            y=_X[:, 1],
+                            c=_y,
+                            cmap=cm_bright,
+                            edgecolors="k",
+                            alpha=0.6,
+                            marker="o",
+                            label="CB"
+                        )
 
                 # display additional information
 
@@ -316,6 +335,7 @@ def animate_dataset_model_grid_on_models_autosplit(
         figure: plt.Figure=None,
         axes: plt.Axes=None,
         fit_estimators=True,
+        size_as_decrement_score=False,
         DecisionBoundaryDisplay_kwargs=None) -> Tuple[FuncAnimation, plt.Figure , plt.Axes]:
 
     require_ref_set = any(isinstance(clf, CBClassificationMaintainer) for clf in classifiers)
@@ -332,6 +352,7 @@ def animate_dataset_model_grid_on_models_autosplit(
             figure,
             axes,
             fit_estimators,
+            size_as_decrement_score,
             DecisionBoundaryDisplay_kwargs)
 
 def animate_dataset_model_grid_on_models(
@@ -345,6 +366,7 @@ def animate_dataset_model_grid_on_models(
         figure: plt.Figure=None,
         axes: plt.Axes=None,
         fit_estimators=True,
+        size_as_decrement_score=False,
         DecisionBoundaryDisplay_kwargs=None) -> Tuple[FuncAnimation, plt.Figure , plt.Axes]:
 
     if figure is None and axes is None:
@@ -370,6 +392,7 @@ def animate_dataset_model_grid_on_models(
             figure,
             axes,
             fit_estimators,
+            size_as_decrement_score,
             DecisionBoundaryDisplay_kwargs)
         plt.tight_layout()
 
