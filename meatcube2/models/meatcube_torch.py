@@ -19,7 +19,7 @@ from .AbstractEnergyBasedClassifier import ACaseBaseEnergyClassifier, SourceSpac
 
 NumberOrBool = Union[float, int, bool]
 
-TQDM_VERBOSE = True
+TQDM_VERBOSE = False
 
 class MeATCubeCB(ACaseBaseEnergyClassifier):
     """Collection of tensors and metrics that automate the computations of several metrics based on the number of 
@@ -292,6 +292,8 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
         """Compute the competence of the case base w.r.t a test set, or if an `index` is provided, the contribution of \
         the corresponding case to the competence.
 
+        Lower values correspond to less desirable cases.
+
         :param index: 
             if provided, computes the contribution (`Cᵢ(CB, ...)`) of the case at `index` (`CBᵢ`) to the competence,
             i.e., the difference of the competence with (`CB`) and without (`CB/CBᵢ`) the case:
@@ -364,25 +366,28 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
             inversion_rates.size(-1),
             device=inversion_rates.device
         ).unsqueeze(0) == true_outcome_index.unsqueeze(1)
-        l_mce = inversion_rates[~mask].min(dim=-1).values - inversion_rates[mask]
+        l_mce = inversion_rates[mask] - inversion_rates[~mask].min(dim=-1).values
         mask_max = (mask.unsqueeze(0)) * (inversion_rates_i.max().detach() + 1) # trick to "exclude" the mask from the min
-        l_mce_i = (inversion_rates_i + mask_max).min(dim=-1).values - inversion_rates_i[:,mask]
+        l_mce_i = inversion_rates_i[:,mask] - (inversion_rates_i + mask_max).min(dim=-1).values
         # l_mce: [|S|]
         # l_mce_i: [|index|, |S|]
 
         # if hinge loss, modify a bit before aggregation
         if strategy=="hinge":
-            l = -(margin - l_mce).clamp(min=0)
-            l_i = -(margin - l_mce_i).clamp(min=0)
+            l = (margin + l_mce).clamp(min=0)
+            l_i = (margin + l_mce_i).clamp(min=0)
         else:
             l = l_mce
             l_i = l_mce_i
         # l: [|S|]
         # l_i: [|index|, |S|]
 
+        # moving from the loss to the competence (and normalizing, if need be)
+        l = -l
+        l_i = -l_i
+
         l = l.unsqueeze(0) - l_i 
         # l: [|index|, |S|]
-
 
         # aggregate the results
         # l: if aggregation is None or "none": [|index|, |S|]

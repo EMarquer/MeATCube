@@ -162,9 +162,9 @@ class EnergyKNN(ACaseBaseEnergyClassifier):
         else:
             self.device_ = device
 
-        for param in [self.X_sim_matrix_, self.y_sim_matrix_, self.y_sim_vectors_]:
-            if param is not None:
-                param = param.to(self.device_)
+        for param in list(self.__dict__.keys()): #[self.X_sim_matrix_, self.y_sim_matrix_, self.y_sim_vectors_]:
+            if param.endswith("_") and getattr(self, param) is not None and isinstance(getattr(self, param), torch.Tensor):
+                setattr(self, param, getattr(self, param).to(self.device_))
 
         return self.device_
 

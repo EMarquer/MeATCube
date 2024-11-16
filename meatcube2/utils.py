@@ -63,7 +63,7 @@ def check_mem_available(device: torch.device, bytes: int) -> bool:
         return bytes <= free
     else:
         import psutil
-        free = psutil.virtual_memory()
+        free = psutil.virtual_memory().available
         return bytes <= free
 
 def estimate_batch_size(device: torch.device, batch_element_bytes: int, max_batch_size: int=2**20, fixed_overhead: int=0) -> int:

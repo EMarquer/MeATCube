@@ -252,7 +252,7 @@ class CtCoATEnergyComputations(object):
             for i in range(len(batch_sizes)):
                 batch_sizes[i] = max(batch_sizes[i], other_batch_sizes[i])
         
-        memory_inversions_i = CtCoATEnergyComputations._estimate_memory_inversions_i(
+        memory_inversions_i = CtCoATEnergyComputations._estimate_memory_energies_i(
             sim_source=sim_source,
             sim_outcome=sim_outcome,
             new_sim_source=new_sim_source,

@@ -394,7 +394,7 @@ class ACaseBaseEnergyClassifier(BaseEstimator, ClassifierMixin, ACaseBaseEnergyP
         
         When performing decremental maintenance (removing cases), these scores are used to select the case(s) to remove.
 
-        Higher values correspond to less desirable cases.
+        Lower values correspond to less desirable cases.
 
         Returns
         -------
@@ -420,7 +420,7 @@ class ACaseBaseEnergyClassifier(BaseEstimator, ClassifierMixin, ACaseBaseEnergyP
         
         When performing incremental maintenance (adding cases), these scores are used to select the case(s) to add.
 
-        Higher values correspond to less desirable cases.
+        Lower values correspond to less desirable cases.
 
         Returns
         -------

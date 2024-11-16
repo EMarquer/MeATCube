@@ -209,9 +209,9 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
             # update the estimator
             with catchtime() as t:
                 if self.mode == "decrement":
-                    estimator, idx, _ = self.decrement(X_ref=X_ref, y_ref=y_ref, inplace=not self.memorize_estimators, **loss_kwargs)
+                    estimator, idx, _ = self.decrement(X_ref=X_ref, y_ref=y_ref, inplace=True, **loss_kwargs)
                 elif self.mode == "increment":
-                    estimator, idx, _ = self.increment(X_unused, y_unused, X_ref, y_ref, inplace=not self.memorize_estimators, **loss_kwargs)
+                    estimator, idx, _ = self.increment(X_unused, y_unused, X_ref, y_ref, inplace=True, **loss_kwargs)
 
             # evaluate the latest model and update best model
             self.scores_.append(get_score_to_watch())
@@ -219,13 +219,11 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
             if self.memorize_estimators:
                 # un-CUDA the estimator to be stored
                 if "device_" in self.estimator.__dict__.keys():
-                    self.estimator = clone(estimator)
-                    device = estimator.device_
-                    estimator.to_device("cpu")
-                    self.estimator.to_device(device)
+                    estimator_for_memorize = clone(self.estimator)
+                    estimator_for_memorize.to_device("cpu")
                 else:
-                    self.estimator = estimator
-                self.estimators_.append(estimator)
+                    estimator_for_memorize = clone(self.estimator)
+                self.estimators_.append(estimator_for_memorize)
             if self.scores_[-1] > self.best_score_: # update best model
                 self.best_score_ = self.scores_[-1]
                 if self.memorize_estimators:
@@ -287,7 +285,7 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
             The scores that led to the addition decision.
         """
         increment_scores = self.estimator.increment_scores(X_candidate=X, y_candidate=y, X_ref=X_ref, y_ref=y_ref, **loss_kwargs)
-        index = increment_scores.argmin()
+        index = increment_scores.argmax()
         estimator = self.estimator.add(X[index], y[index])
         if inplace:
             self.estimator = estimator
@@ -325,7 +323,7 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
             The scores that led to the removal decision.
         """
         decrement_scores = self.estimator.decrement_scores(X_ref=X_ref, y_ref=y_ref, **loss_kwargs)
-        index = decrement_scores.argmax()
+        index = decrement_scores.argmin()
         estimator = self.estimator.remove(index)
         if inplace:
             self.estimator = estimator
