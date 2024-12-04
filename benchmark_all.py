@@ -43,7 +43,13 @@ def class_equality_sim(y1,y2):
     return np.equal(y1,y2).astype(float)
 
 classifier_names = [
-    "kNN \n($k=1$, sklearn kNN)",
+    "MeATCube \n($\sigma_X$: Euclidean, $\sigma_y$: class)",
+    # "MeATCube \n($\sigma_X$: Cosine, $\sigma_y$: class)",
+    # "MeATCube \n($\sigma_X$: Hamming, $\sigma_y$: class)",
+    "CtCoat \n($\sigma_X$: Euclidean, $\sigma_y$: class)",
+    # "CtCoat \n($\sigma_X$: Cosine, $\sigma_y$: class)",
+    # "CtCoat \n($\sigma_X$: Hamming, $\sigma_y$: class)",
+    # "kNN \n($k=1$, sklearn kNN)",
     "kNN \n($k=1$, $\sigma_X$: Euclidean, $\sigma_y$: class)",
     "kNN \n($k=3$, $\sigma_X$: Euclidean, $\sigma_y$: class)",
     "kNN \n($k=10$, $\sigma_X$: Euclidean, $\sigma_y$: class)",
@@ -53,15 +59,15 @@ classifier_names = [
     # "kNN \n($k=1$, $\sigma_X$: Hamming, $\sigma_y$: class)",
     # "kNN \n($k=3$, $\sigma_X$: Hamming, $\sigma_y$: class)",
     # "kNN \n($k=10$, $\sigma_X$: Hamming, $\sigma_y$: class)",
-    "MeATCube \n($\sigma_X$: Euclidean, $\sigma_y$: class)",
-    # "MeATCube \n($\sigma_X$: Cosine, $\sigma_y$: class)",
-    # "MeATCube \n($\sigma_X$: Hamming, $\sigma_y$: class)",
-    "CtCoat \n($\sigma_X$: Euclidean, $\sigma_y$: class)",
-    # "CtCoat \n($\sigma_X$: Cosine, $\sigma_y$: class)",
-    # "CtCoat \n($\sigma_X$: Hamming, $\sigma_y$: class)",
 ]
 classifier_properties = [
-    {"model": "sklearn kNN", "k": 1},
+    {"model": "MeATCube",       "$\sigma_X$": "Euclidean",  "$\sigma_y$": "class"},
+    # {"model": "MeATCube",       "$\sigma_X$": "Cosine",     "$\sigma_y$": "class"},
+    # {"model": "MeATCube",       "$\sigma_X$": "Hamming",    "$\sigma_y$": "class"},
+    {"model": "CtCoat",         "$\sigma_X$": "Euclidean",  "$\sigma_y$": "class"},
+    # {"model": "CtCoat",         "$\sigma_X$": "Cosine",     "$\sigma_y$": "class"},
+    # {"model": "CtCoat",         "$\sigma_X$": "Hamming",    "$\sigma_y$": "class"},
+    # {"model": "sklearn kNN", "k": 1},
     {"model": "kNN", "k": 1,    "$\sigma_X$": "Euclidean",  "$\sigma_y$": "class"},
     {"model": "kNN", "k": 3,    "$\sigma_X$": "Euclidean",  "$\sigma_y$": "class"},
     {"model": "kNN", "k": 10,   "$\sigma_X$": "Euclidean",  "$\sigma_y$": "class"},
@@ -71,16 +77,16 @@ classifier_properties = [
     # {"model": "kNN", "k": 1,    "$\sigma_X$": "Hamming",    "$\sigma_y$": "class"},
     # {"model": "kNN", "k": 3,    "$\sigma_X$": "Hamming",    "$\sigma_y$": "class"},
     # {"model": "kNN", "k": 10,   "$\sigma_X$": "Hamming",    "$\sigma_y$": "class"},
-    {"model": "MeATCube",       "$\sigma_X$": "Euclidean",  "$\sigma_y$": "class"},
-    # {"model": "MeATCube",       "$\sigma_X$": "Cosine",     "$\sigma_y$": "class"},
-    # {"model": "MeATCube",       "$\sigma_X$": "Hamming",    "$\sigma_y$": "class"},
-    {"model": "CtCoat",         "$\sigma_X$": "Euclidean",  "$\sigma_y$": "class"},
-    # {"model": "CtCoat",         "$\sigma_X$": "Cosine",     "$\sigma_y$": "class"},
-    # {"model": "CtCoat",         "$\sigma_X$": "Hamming",    "$\sigma_y$": "class"},
 ]
 
 classifiers = [
-    EnergyClf(KNeighborsClassifier(n_neighbors=1)),
+    MeATCubeCB(euclidean_sim, class_equality_sim, precompute_sim_matrix=True),
+    # MeATCubeCB(cosine_sim,    class_equality_sim, precompute_sim_matrix=True),
+    # MeATCubeCB(hamming_sim,   class_equality_sim, precompute_sim_matrix=True),
+    CtCoAT(euclidean_sim, class_equality_sim, precompute_sim_matrix=True),
+    # CtCoAT(cosine_sim,    class_equality_sim, precompute_sim_matrix=True),
+    # CtCoAT(hamming_sim,   class_equality_sim, precompute_sim_matrix=True),
+    EnergyClf(KNeighborsClassifier(n_neighbors=1, n_jobs=8)),
     EnergyKNN(euclidean_sim, class_equality_sim, n_neighbors=1,  precompute_sim_matrix=True),
     EnergyKNN(euclidean_sim, class_equality_sim, n_neighbors=3,  precompute_sim_matrix=True),
     EnergyKNN(euclidean_sim, class_equality_sim, n_neighbors=10, precompute_sim_matrix=True),
@@ -90,12 +96,6 @@ classifiers = [
     # EnergyKNN(hamming_sim,   class_equality_sim, n_neighbors=1,  precompute_sim_matrix=True),
     # EnergyKNN(hamming_sim,   class_equality_sim, n_neighbors=3,  precompute_sim_matrix=True),
     # EnergyKNN(hamming_sim,   class_equality_sim, n_neighbors=10, precompute_sim_matrix=True),
-    MeATCubeCB(euclidean_sim, class_equality_sim, precompute_sim_matrix=True),
-    # MeATCubeCB(cosine_sim,    class_equality_sim, precompute_sim_matrix=True),
-    # MeATCubeCB(hamming_sim,   class_equality_sim, precompute_sim_matrix=True),
-    CtCoAT(euclidean_sim, class_equality_sim, precompute_sim_matrix=True),
-    # CtCoAT(cosine_sim,    class_equality_sim, precompute_sim_matrix=True),
-    # CtCoAT(hamming_sim,   class_equality_sim, precompute_sim_matrix=True),
 ]
 
 # %% [markdown]
@@ -113,7 +113,7 @@ from sklearn.preprocessing import StandardScaler, QuantileTransformer
 BENCHMARK_FOLDER = os.path.join(CURRENT_FOLDER, )
 RESULT_FOLDER = os.path.join(BENCHMARK_FOLDER, "results")
 
-APPLY_SCALING = False
+APPLY_SCALING = True
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 RECOMPUTE = False
@@ -127,7 +127,7 @@ N_SPLITS = 2
 dataset_names = []
 datasets = []
 paths = []
-for dataset in dataset_utils.DATASETS[1:2]:
+for dataset in dataset_utils.DATASETS[:1] + dataset_utils.DATASETS[2:]:
 
     state_dict = dataset_utils.load_dataset_from_pickle(dataset)
     X = state_dict["X"]
@@ -190,59 +190,71 @@ dataset_names
 # %%
 from meatcube2.metrics import confidence, clf_prediction_summary
 from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 dfs = dict()
 print (DEVICE)
 
 
-with torch.no_grad():
-    for dataset, dataset_name in (pbar1:=tqdm(list(zip(datasets, dataset_names)))):
-        pbar1.set_description(dataset_name)
-        for split in (pbar2:=tqdm(list(dataset["splits"]), leave=False)):
-            #print("#", end="")
-            (X_train, y_train) = split["train"]
-            (X_ref, y_ref) = split["ref"]
-            (X_test, y_test) = split["test"]
-            unique, counts = np.unique(y_test, return_counts=True)
-            pbar2.set_description(f"Split ( single-class baseline: {(counts / counts.sum())})")
-            
-            pbar3 = tqdm(list(zip(classifiers, classifier_names, classifier_properties)), leave=False)
-            pbar4 = tqdm(range(len(y_train)), leave=False)
-            
-            model_str = ""
-            # define a custom metric to account for the test set performance
-            def test_ref_clf_prediction_summary(cb, X_ref, y_ref):
-                scores = {
-                    "ref_"+k: v for k, v in clf_prediction_summary(cb, X_ref, y_ref).items()
-                }
-                scores.update({
-                    "test_"+k: v for k, v in clf_prediction_summary(cb, X_test, y_test).items()
-                })
-                pbar4.update()
-                pbar4.set_description(str({"|CB|": len(cb), "ref. acc.": scores['ref_accuracy'], "test acc.": scores['test_accuracy']}))
-                #pbar3.set_postfix({"|CB|": len(cb), "ref. acc.": scores['ref_accuracy'], "test acc.": scores['test_accuracy']})
-                return scores
-            
-            # apply the model
-            for model, model_name, model_pp in pbar3:
-                pbar4.reset()
-                model_str = "Model: "+ model_pp["model"]
-                pbar3.set_description("Model: "+ model_pp["model"])
-                #print("\t", model_pp, dataset_name, len(y_train),  len(y_ref))
-                maintainer = CBClassificationMaintainer(
-                    model,
-                    memorize_estimators=True,
-                    scoring=test_ref_clf_prediction_summary,
-                    refit="ref_accuracy",
-                    patience=-1)
-                maintainer.fit(X_train, y_train, X_ref, y_ref, fit_kwargs={"device": DEVICE})
+#torch.cuda.memory._record_memory_history()
 
-                df_ = pd.DataFrame.from_records(maintainer.results_)
-                df_["parameters"] = [tuple(model_pp.items())]*len(df_)
-                dfs[(model_name, dataset_name)] = df_
-            pbar4.close()
-# %%
-index = list(dfs.keys())
-df = pd.concat(dfs)
-df.to_pickle("benchmark_df_.pkl")
+with logging_redirect_tqdm():
+    with torch.no_grad():
+        for dataset, dataset_name in (pbar1:=tqdm(list(zip(datasets, dataset_names)))):
+            pbar1.set_description(dataset_name)
+            for split_id, split in (pbar2:=tqdm(list(enumerate(dataset["splits"])), leave=False)):
+                #print("#", end="")
+                (X_train, y_train) = split["train"]
+                (X_ref, y_ref) = split["ref"]
+                (X_test, y_test) = split["test"]
+                unique, counts = np.unique(y_test, return_counts=True)
+                pbar2.set_description(f"Split ( single-class baseline: {(counts / counts.sum())})")
+                
+                pbar3 = tqdm(list(zip(classifiers, classifier_names, classifier_properties)), leave=False)
+                pbar4 = tqdm(range(len(y_train)), leave=False)
+                
+                model_str = ""
+                # define a custom metric to account for the test set performance
+                def test_ref_clf_prediction_summary(cb, X_ref, y_ref):
+                    #torch.cuda.memory._dump_snapshot()
+                    scores = {
+                        "ref_"+k: v for k, v in clf_prediction_summary(cb, X_ref, y_ref).items()
+                    }
+                    scores.update({
+                        "test_"+k: v for k, v in clf_prediction_summary(cb, X_test, y_test).items()
+                    })
+                    pbar4.update()
+                    pbar4.set_description(str({"|CB|": len(cb), "ref. acc.": scores['ref_accuracy'], "test acc.": scores['test_accuracy']}))
+                    #pbar3.set_postfix({"|CB|": len(cb), "ref. acc.": scores['ref_accuracy'], "test acc.": scores['test_accuracy']})
+                    return scores
+                
+                # apply the model
+                for model, model_name, model_pp in pbar3:
+                    pbar4.reset()
+                    model_str = "Model: "+ model_pp["model"]
+                    pbar3.set_description("Model: "+ model_pp["model"])
+                    #print("\t", model_pp, dataset_name, len(y_train),  len(y_ref))
+                    maintainer = CBClassificationMaintainer(
+                        model,
+                        memorize_estimators=True,
+                        scoring=test_ref_clf_prediction_summary,
+                        refit="ref_accuracy",
+                        patience=-1)
+                    maintainer.fit(X_train, y_train, X_ref, y_ref, fit_kwargs={"device": DEVICE})
+
+                    df_ = pd.DataFrame.from_records(maintainer.results_)
+                    df_["parameters"] = [tuple(model_pp.items())]*len(df_)
+                    dfs[(model_name, dataset_name, split_id)] = df_
+                    #torch.cuda.memory._dump_snapshot()
+                pbar4.close()
+
+                df = pd.concat({k: v for k, v in dfs.items() if (k[1] == dataset_name) and (k[2] == split_id)})
+                df.to_pickle(f"benchmark_df_{dataset_name}_split_{split_id}.pkl")
+            df = pd.concat({k: v for k, v in dfs.items() if (k[1] == dataset_name)})
+            df.to_pickle(f"benchmark_df_{dataset_name}.pkl")
+
+    # %%
+    index = list(dfs.keys())
+    df = pd.concat(dfs)
+    df.to_pickle("benchmark_df_all.pkl")
 
 
