@@ -408,10 +408,14 @@ class ACaseBaseEnergyClassifier(BaseEstimator, ClassifierMixin, ACaseBaseEnergyP
         # ])
         
         # Version with fewer computations
-        return np.array([
-            - self.remove(i).loss_cb(X_ref, y_ref, **loss_kwargs)
-            for i in range(len(self))
-        ])
+        models_scores = []
+        for i in range(len(self)):
+            try:
+                score = - self.remove(i).loss_cb(X_ref, y_ref, **loss_kwargs)
+            except ValueError:
+                score = np.nan
+            models_scores.append(score)
+        return np.array(models_scores)
     
     #@abstractmethod
     def increment_scores(self, X_candidate, y_candidate, X_ref, y_ref, **loss_kwargs) -> np.ndarray[float]:

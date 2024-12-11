@@ -207,11 +207,16 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
 
         for i in range(n_iter):
             # update the estimator
-            with catchtime() as t:
-                if self.mode == "decrement":
-                    estimator, idx, _ = self.decrement(X_ref=X_ref, y_ref=y_ref, inplace=True, **loss_kwargs)
-                elif self.mode == "increment":
-                    estimator, idx, _ = self.increment(X_unused, y_unused, X_ref, y_ref, inplace=True, **loss_kwargs)
+            try:
+                with catchtime() as t:
+                    if self.mode == "decrement":
+                        estimator, idx, _ = self.decrement(X_ref=X_ref, y_ref=y_ref, inplace=True, **loss_kwargs)
+                    elif self.mode == "increment":
+                        estimator, idx, _ = self.increment(X_unused, y_unused, X_ref, y_ref, inplace=True, **loss_kwargs)
+            except ValueError as e:
+                if "All-NaN slice encountered" in str(e):
+                    break
+                else: raise e
 
             # evaluate the latest model and update best model
             self.scores_.append(get_score_to_watch())
@@ -323,7 +328,7 @@ class CBClassificationMaintainer(MetaEstimatorMixin, ClassifierMixin):
             The scores that led to the removal decision.
         """
         decrement_scores = self.estimator.decrement_scores(X_ref=X_ref, y_ref=y_ref, **loss_kwargs)
-        index = decrement_scores.argmin()
+        index = np.nanargmin(decrement_scores)
         estimator = self.estimator.remove(index)
         if inplace:
             self.estimator = estimator
