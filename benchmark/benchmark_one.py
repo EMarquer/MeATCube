@@ -7,6 +7,7 @@ from matplotlib.colors import ListedColormap
 import seaborn as sns
 from packaging.version import Version
 from tqdm import tqdm
+from logging import warning, info, error
 from tqdm.contrib.logging import logging_redirect_tqdm
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
@@ -160,7 +161,12 @@ def parse_args(arg_string=None)  -> argparse.Namespace:
     if args.max_size_T > 0: args.size_T = min(args.max_size_T, args.size_T)
     if args.max_size_V > 0: args.size_V = min(args.max_size_V, args.size_V)
     if args.max_size_S > 0: args.size_S = min(args.max_size_S, args.size_S)
-    print(f"{args.size_T=} {args.size_V=} {args.size_S=}")
+
+    args.size_T = int(args.size_T)
+    args.size_V = int(args.size_V)
+    args.size_S = int(args.size_S)
+
+    info(f"{args.size_T=} {args.size_V=} {args.size_S=}")
 
     # summarize model properties
     args.model_pp = {"model": args.classifier, "compression": args.algo, "$\sigma_X$": "Euclidean", "$\sigma_y$": "class", "k": args.k, "margin": args.margin}
@@ -180,10 +186,10 @@ def check_if_needs_rerun(args, random_state):
     # rerun if the file is too old
     state_dict = load_results(path=result_path)
     if Version(state_dict["version"]) < Version(VERSION): 
-        print(f"results are from an older version ({state_dict['version']} < {VERSION}), rerunning the experiment")
+        warning(f"results are from an older version ({state_dict['version']} < {VERSION}), rerunning the experiment")
         return True
     elif random_state != state_dict["random_state"]:
-        print(f"results use a different random state ({RANDOM_STATE} != {state_dict['random_state']}), rerunning the experiment")
+        warning(f"results use a different random state ({RANDOM_STATE} != {state_dict['random_state']}), rerunning the experiment")
         return True
     
     return False
@@ -205,9 +211,9 @@ def prep_dataset(args, random_state=RANDOM_STATE):
     except ValueError:
         try:
             splits = [{"train_full_index": train, "test_index": test, "fold": i} for i, (train, test) in enumerate(StratifiedShuffleSplit(n_splits=1, random_state=random_state, test_size=args.size_V).split(X, y))]
-            print(f"failed to handle {args.dataset_name} stratified splitting for {args.size_V=} and {args.folds=}, used fallback one fold sucessfully")
+            warning(f"failed to handle {args.dataset_name} stratified splitting for {args.size_V=} and {args.folds=}, used fallback one fold sucessfully")
         except ValueError as v:
-            print(f"failed to handle {args.dataset_name} stratified splitting for {args.size_V=}, aborting")
+            warning(f"failed to handle {args.dataset_name} stratified splitting for {args.size_V=}, aborting")
             raise v
 
     # perform S | V split for each fold
@@ -252,26 +258,27 @@ import pickle
 from sklearn.model_selection import StratifiedShuffleSplit, KFold, train_test_split
 from sklearn.preprocessing import StandardScaler, QuantileTransformer
 
-def main(arg_string=None):
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-    print(f"Using device {DEVICE} when compatible")
-
-    args = parse_args(arg_string=arg_string)
-    save_file = make_result_path(args)
-    os.makedirs(os.path.dirname(save_file), exist_ok=True)
-    
-    if args.force_recompute:
-        print("Forcing rerun, ignoring file existence check for the result file.")
-    elif not check_if_needs_rerun(args, RANDOM_STATE):
-        print(f"No rerun required, delete '{save_file}' of use --force_recompute to force rerun")
-        return 1
-    
-    splits, y_values = prep_dataset(args)
-
-    records = []
-    models = dict()
+def main(args=None, arg_string=None, device='cpu'):
     with logging_redirect_tqdm():
+        if args is None:
+            args = parse_args(arg_string=arg_string)
+        save_file = make_result_path(args)
+        os.makedirs(os.path.dirname(save_file), exist_ok=True)
+        
+        if args.force_recompute:
+            warning("Forcing rerun, ignoring file existence check for the result file.")
+        elif not check_if_needs_rerun(args, RANDOM_STATE):
+            warning(f"No rerun required, use --force_recompute to force rerun or delete '{save_file}'")
+            return 1
+        
+        try:
+            splits, y_values = prep_dataset(args)
+        except ValueError as e:
+            error(e)
+            return 2
+
+        records = []
+        models = dict()
         with torch.no_grad():
             for split_id, split in (pbar_splits:=tqdm(list(enumerate(splits)), leave=False, disable=args.no_tqdm)):
                 (X_train, y_train) = split["train"]
@@ -325,14 +332,20 @@ def main(arg_string=None):
                 else: raise ValueError(f"Unsupported algo: '{args.algo}'")
 
                 # run the compression algo
-                maintainer.fit(X_train, y_train, X_ref, y_ref, fit_kwargs={"device": DEVICE})
+                maintainer.fit(X_train, y_train, X_ref, y_ref, fit_kwargs={"device": device})
 
                 # )
                 records += maintainer.results_
                 models[f"fold {split_id}"] = [(model._X, model._y) for model in maintainer.estimators_]
                 pbar_steps.close()
     save_results(args, records, models, save_file)
+    return 0
 
 if __name__ == "__main__":
-    main()
+    with logging_redirect_tqdm():
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+        warning(f"Using device {DEVICE} when compatible")
+        status = main(device=DEVICE)
+        sys.exit(status)
     
