@@ -2,9 +2,9 @@
 
 import pandas as pd
 try:
-    from . import _utils as utils
+    from . import dataset_utils as utils
 except ImportError:
-    import _utils as utils
+    import benchmark.maintenance.preprocess.dataset_utils as utils
 
 columns = ["L-CORE","L-SURF","L-O2","L-BP","SURF-STBL","CORE-STBL","BP-STBL","COMFORT","decision ADM-DECS"]
 target_column = "decision ADM-DECS"

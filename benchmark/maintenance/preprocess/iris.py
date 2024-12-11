@@ -1,8 +1,8 @@
 import pandas as pd
 try:
-    from . import _utils as utils
+    from . import dataset_utils as utils
 except ImportError:
-    import _utils as utils
+    import benchmark.maintenance.preprocess.dataset_utils as utils
 
 columns = ["sepal length in cm","sepal width in cm","petal length in cm","petal width in cm","class"]
 target_column = "class"

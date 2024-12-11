@@ -1,8 +1,8 @@
 import pandas as pd
 try:
-    from . import _utils as utils
+    from . import dataset_utils as utils
 except ImportError:
-    import _utils as utils
+    import benchmark.maintenance.preprocess.dataset_utils as utils
 
 columns = ["RI", "Na", "Mg", "Al", "Si", "K", "Ca", "Ba", "Fe", "Type"]
 target_column = "Type"

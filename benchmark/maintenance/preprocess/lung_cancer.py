@@ -2,9 +2,9 @@
 
 import pandas as pd
 try:
-    from . import _utils as utils
+    from . import dataset_utils as utils
 except ImportError:
-    import _utils as utils
+    import benchmark.maintenance.preprocess.dataset_utils as utils
 
 columns = list(range(1,58))
 target_column = 1

@@ -8,26 +8,43 @@ from matplotlib.colors import ListedColormap
 import matplotlib.animation
 FuncAnimation = matplotlib.animation.FuncAnimation
 
-from sklearn.base import ClassifierMixin
+from sklearn.base import ClassifierMixin, clone
 from sklearn.utils.validation import check_is_fitted
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import make_pipeline
 from sklearn.inspection import DecisionBoundaryDisplay
 from sklearn.preprocessing import StandardScaler, QuantileTransformer
+from sklearn.decomposition import PCA
+from sklearn.pipeline import Pipeline
 
 from ..models.AbstractEnergyBasedClassifier import ACaseBaseEnergyClassifier
 from ..cb_maintenance import CBClassificationMaintainer
 
-def split_datasets(datasets: List, require_ref_set=False, random_state=42, ref_size=0.4, test_size=0.3):
+
+class InvertPCA(ClassifierMixin):
+    def __init__(self, pca, clf) -> None:
+        super().__init__()
+        self.clf = clf
+        self.pca = pca
+    def predict(self, X, **kwargs):
+        return self.clf.predict(self.pca.inverse_transform(X), **kwargs)
+    def predict_proba(self, X, **kwargs):
+        return self.clf.predict_proba(self.pca.inverse_transform(X), **kwargs)
+    def __sklearn_is_fitted__(self):
+        return True
+    def fit(self, X, y):
+        pass
+
+def split_datasets(datasets: List, require_ref_set=False, random_state=42, ref_size=0.4, test_size=0.3, stratify=True):
     datasets_split = []
     for dataset in datasets:
         X, y = dataset
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=random_state
+            X, y, test_size=test_size, random_state=random_state, stratify=y if stratify else None
         )
         if require_ref_set:
             X_train, X_ref, y_train, y_ref = train_test_split(
-                X_train, y_train, test_size=ref_size, random_state=random_state
+                X_train, y_train, test_size=ref_size, random_state=random_state, stratify=y_train if stratify else None
             )
             datasets_split.append((
                 (X_train, y_train),
@@ -167,6 +184,15 @@ def plot_dataset_model_grid(datasets_split: Union[List[Tuple[Any, Any]], List[Tu
                 (X_train, y_train), (X_ref, y_ref), (X_test, y_test), = ds
                 X, y = np.concatenate([X_train, X_ref, X_test], axis=0), np.concatenate([y_train, y_ref, y_test], axis=0)
 
+            if len(X[0]) > 2: # dimensionality reduction
+                pca = PCA(n_components=2, random_state=42)
+                X = pca.fit_transform(X)
+                dimensionality_reduction = True
+                X_train_ = pca.transform(X_train)
+                X_ref_ = pca.transform(X_ref)
+                X_test_ = pca.transform(X_test)
+            else: dimensionality_reduction = False
+
             x_min, x_max = X[:, 0].min() - 0.5, X[:, 0].max() + 0.5
             y_min, y_max = X[:, 1].min() - 0.5, X[:, 1].max() + 0.5
 
@@ -175,18 +201,22 @@ def plot_dataset_model_grid(datasets_split: Union[List[Tuple[Any, Any]], List[Tu
             cm_bright = ListedColormap(["#FF0000", "#0000FF"])
             ax = figure.add_subplot(len(datasets_split), len(classifiers) + 1, i)
             # Plot the training points
-            ax.scatter(X_train[:, 0], X_train[:, 1], c=y_train, cmap=cm_bright, edgecolors="k",
+            ax.scatter(*(
+                    (X_train_[:, 0], X_train_[:, 1]) if dimensionality_reduction else (X_train[:, 0], X_train[:, 1])
+                ), c=y_train, cmap=cm_bright, edgecolors="k",
                     label="Training data")
             # Plot the ref points
             if X_ref is not None and y_ref is not None:
-                ax.scatter(
-                    X_ref[:, 0], X_ref[:, 1], c=y_ref, cmap=cm_bright, alpha=0.6, #edgecolors="k",
+                ax.scatter(*(
+                        (X_ref_[:, 0], X_ref_[:, 1]) if dimensionality_reduction else (X_ref[:, 0], X_ref[:, 1])
+                    ), c=y_ref, cmap=cm_bright, alpha=0.6, #edgecolors="k",
                         marker="^",
                         label="Ref data"
                 )
             # Plot the testing points
-            ax.scatter(
-                X_test[:, 0], X_test[:, 1], c=y_test, cmap=cm_bright, alpha=0.6, #edgecolors="k",
+            ax.scatter(*(
+                        (X_test_[:, 0], X_test_[:, 1]) if dimensionality_reduction else (X_test[:, 0], X_test[:, 1])
+                    ), c=y_test, cmap=cm_bright, alpha=0.6, #edgecolors="k",
                     marker="v",
                     label="Test data"
             )
@@ -232,8 +262,12 @@ def plot_dataset_model_grid(datasets_split: Union[List[Tuple[Any, Any]], List[Tu
                 #clf_ = make_pipeline(scaler, clf)
                 
                 score = clf.score(X_test, y_test)
+
+                if dimensionality_reduction:
+                    estimator = InvertPCA(pca, clf)
+                else: estimator = clf
                 DecisionBoundaryDisplay.from_estimator(
-                    clf, X, cmap=cm, ax=ax, eps=0.5, **DecisionBoundaryDisplay_kwargs
+                    estimator, X, cmap=cm, ax=ax, eps=0.5, **DecisionBoundaryDisplay_kwargs
                 )
 
                 # Plot the testing points
@@ -262,6 +296,8 @@ def plot_dataset_model_grid(datasets_split: Union[List[Tuple[Any, Any]], List[Tu
                     except AttributeError:
                         _X = clf._X
                     _y = clf._y
+                    if dimensionality_reduction:
+                        _X = pca.transform(_X)
                     if size_as_decrement_score:
                         sizes = clf.decrement_scores(X_ref, y_ref)
                         s = ((sizes - sizes.min()) / (sizes.max() - sizes.min())) * 20 + 10

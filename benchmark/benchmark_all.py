@@ -20,7 +20,7 @@ try:
     CURRENT_FOLDER = os.path.dirname(__file__) # normal way
 except NameError:
     CURRENT_FOLDER = globals()['_dh'][0] # jupyter notebook way
-sys.path.append(CURRENT_FOLDER)
+sys.path.append(sys.path.join(CURRENT_FOLDER, ".."))
 
 # we load meatcube2 
 from meatcube2.models import MeATCubeCB, CtCoAT, CtCoATNaive, EnergyKNN, EnergyClf
@@ -127,7 +127,7 @@ N_SPLITS = 2
 dataset_names = []
 datasets = []
 paths = []
-for dataset in dataset_utils.DATASETS[:1] + dataset_utils.DATASETS[2:]:
+for dataset in dataset_utils.DATASETS:
 
     state_dict = dataset_utils.load_dataset_from_pickle(dataset)
     X = state_dict["X"]

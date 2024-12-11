@@ -1,8 +1,8 @@
 import pandas as pd
 try:
-    from . import _utils as utils
+    from . import dataset_utils as utils
 except ImportError:
-    import _utils as utils
+    import benchmark.maintenance.preprocess.dataset_utils as utils
 
 columns = ["Age of patient at time of operation", "Patient's year of operation", "Number of positive axillary nodes detected", "Survival status"]
 target_column = "Survival status"
