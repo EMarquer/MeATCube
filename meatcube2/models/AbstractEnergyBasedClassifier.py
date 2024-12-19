@@ -23,6 +23,7 @@ from typing import Union, Literal, Tuple, Optional, Callable, Generic, TypeVar, 
 from typing_extensions import Self
 from collections.abc import Sequence
 from abc import abstractmethod, ABC, ABCMeta
+from logging import warning, info
 
 import numpy as np
 import torch
@@ -502,6 +503,7 @@ class ACaseBaseEnergyClassifier(BaseEstimator, ClassifierMixin, ACaseBaseEnergyP
         # next_best_energies: [|test_cases|]
         # predicted_outcomes: [|test_cases|]
         sorted_energies = np.sort(energies, axis=len(energies.shape)-1)
+        if sorted_energies.shape[1] <= 1: return np.array([0])
         gold_energies, next_best_energies = sorted_energies[:,0], sorted_energies[:,1]
 
         # find where the predicted outcome is not the gold
@@ -513,22 +515,21 @@ class ACaseBaseEnergyClassifier(BaseEstimator, ClassifierMixin, ACaseBaseEnergyP
             test_cases_outcomes = (test_cases_outcomes if isinstance(test_cases_outcomes, np.ndarray) else np.ndarray(test_cases_outcomes))
 
             # if the gold outcome is among known outcomes, find and use the corresponding energy
-            known_mask = np.vectorize(self.classes_.__contains__)(test_cases_outcomes[fail_mask]) # [|fails|]
-            fail_known_mask, fail_unknown_mask = np.copy(fail_mask), np.copy(fail_mask)
-            np.putmask(fail_known_mask, fail_mask, known_mask)
-            np.putmask(fail_unknown_mask, fail_mask, ~known_mask)
-
-            if np.count_nonzero(known_mask) > 0:
+            known_mask = np.vectorize(self.classes_.__contains__)(test_cases_outcomes) # [|fails|]
+            fail_known_mask, fail_unknown_mask = fail_mask & known_mask, fail_mask & ~known_mask
+            
+            if np.count_nonzero(fail_known_mask) > 0:
                 gold_ids = np.vectorize(self.classes_.index)(test_cases_outcomes[fail_known_mask])
                 gold_energies[fail_known_mask] = energies[fail_known_mask,gold_ids]
             # if the gold outcome is not among known outcomes, predict the corresponding energy
-            if np.count_nonzero(~known_mask) > 0: 
+            if np.count_nonzero(fail_unknown_mask) > 0: 
                 test_cases_sources = (test_cases_sources if isinstance(test_cases_sources, np.ndarray) else np.ndarray(test_cases_sources))
                 assert test_cases_outcomes.shape[0] == test_cases_sources.shape[0], f"{test_cases_outcomes.shape}[0] != {test_cases_sources.shape}[0]"
                 test_cases_outcomes[fail_unknown_mask]
                 test_cases_sources[fail_unknown_mask]
                 gold_energies[fail_unknown_mask] = np.fromiter(
-                    self.energy_case_new(X_, y_) for X_, y_ in zip(test_cases_sources[fail_unknown_mask], test_cases_outcomes[fail_unknown_mask])
+                    (self.energy_case_new(X_, y_) for X_, y_ in zip(test_cases_sources[fail_unknown_mask], test_cases_outcomes[fail_unknown_mask])),
+                    dtype=float
                 )
 
         # from the energies, we can now compute the MCE:

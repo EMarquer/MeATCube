@@ -23,7 +23,7 @@ sys.path.append(os.path.join(CURRENT_FOLDER, ".."))
 
 # we load meatcube2 
 from meatcube2.models import MeATCubeCB, CtCoAT, CtCoATNaive, EnergyKNN, EnergyClf, AbstractEnergyBasedClassifier
-from meatcube2.cb_maintenance import CBClassificationMaintainer
+from meatcube2.cb_maintenance import EnergyCompress, CNNR
 from meatcube2.metrics import confidence, clf_prediction_summary
 
 from scipy.linalg import norm
@@ -60,11 +60,12 @@ CLASSIFIERS = {
     "kNN":          EnergyKNN,
     "SVM-poly":     (lambda sim_X, sim_y, args: EnergyClf(SVC(kernel="poly", probability=True))),
     "SVM-rbf":     (lambda sim_X, sim_y, args: EnergyClf(SVC(kernel="rbf", probability=True))),
+    "SVM-linear":     (lambda sim_X, sim_y, args: EnergyClf(SVC(kernel="linear", probability=True))),
 }
 
 CB_LEARNERS = {
-    "EnergyCompress":   CBClassificationMaintainer,
-    #"CNNR":             CNNR,
+    "EnergyCompress":   EnergyCompress,
+    "CNNR":             CNNR,
 }
 
 # argument parsing
@@ -323,7 +324,14 @@ def main(args=None, arg_string=None, device='cpu'):
 
                 # create the compression algo
                 if args.algo == "EnergyCompress":
-                    maintainer = CBClassificationMaintainer(
+                    maintainer = EnergyCompress(
+                        model,
+                        memorize_estimators=True,
+                        scoring=test_ref_clf_prediction_summary,
+                        refit="ref_accuracy",
+                        patience=-1)
+                if args.algo == "CNNR":
+                    maintainer = CNNR(
                         model,
                         memorize_estimators=True,
                         scoring=test_ref_clf_prediction_summary,

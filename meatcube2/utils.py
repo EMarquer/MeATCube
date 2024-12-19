@@ -170,7 +170,7 @@ class MetaEstimatorScoreMixin(MetaEstimatorMixin):
             The ``best_estimator_.score_samples`` method.
         """
         check_is_fitted(self)
-        return self.best_estimator_.score_samples(X)
+        return self.get_estimator().score_samples(X)
 
     @available_if(_estimator_has("predict"))
     def predict(self, X):
@@ -192,7 +192,7 @@ class MetaEstimatorScoreMixin(MetaEstimatorMixin):
             the best found parameters.
         """
         check_is_fitted(self)
-        return self.best_estimator_.predict(X)
+        return self.get_estimator().predict(X)
 
     @available_if(_estimator_has("predict_proba"))
     def predict_proba(self, X):
@@ -215,7 +215,7 @@ class MetaEstimatorScoreMixin(MetaEstimatorMixin):
             to that in the fitted attribute :term:`classes_`.
         """
         check_is_fitted(self)
-        return self.best_estimator_.predict_proba(X)
+        return self.get_estimator().predict_proba(X)
 
     @available_if(_estimator_has("predict_log_proba"))
     def predict_log_proba(self, X):
@@ -238,7 +238,7 @@ class MetaEstimatorScoreMixin(MetaEstimatorMixin):
             corresponds to that in the fitted attribute :term:`classes_`.
         """
         check_is_fitted(self)
-        return self.best_estimator_.predict_log_proba(X)
+        return self.get_estimator().predict_log_proba(X)
 
     @available_if(_estimator_has("decision_function"))
     def decision_function(self, X):
@@ -261,7 +261,7 @@ class MetaEstimatorScoreMixin(MetaEstimatorMixin):
             the best found parameters.
         """
         check_is_fitted(self)
-        return self.best_estimator_.decision_function(X)
+        return self.get_estimator().decision_function(X)
 
     @available_if(_estimator_has("transform"))
     def transform(self, X):
@@ -283,12 +283,12 @@ class MetaEstimatorScoreMixin(MetaEstimatorMixin):
             the best found parameters.
         """
         check_is_fitted(self)
-        return self.best_estimator_.transform(X)
+        return self.get_estimator().transform(X)
 
     @available_if(_estimator_has("__len__"))
     def __len__(self):
         check_is_fitted(self)
-        return self.best_estimator_.__len__()
+        return self.get_estimator(self).__len__()
     @available_if(_estimator_has("inverse_transform"))
     def inverse_transform(self, Xt):
         """Call inverse_transform on the estimator with the best found params.
@@ -309,7 +309,7 @@ class MetaEstimatorScoreMixin(MetaEstimatorMixin):
             estimator with the best found parameters.
         """
         check_is_fitted(self)
-        return self.best_estimator_.inverse_transform(Xt)
+        return self.get_estimator().inverse_transform(Xt)
 
     @property
     def n_features_in_(self):
@@ -328,7 +328,7 @@ class MetaEstimatorScoreMixin(MetaEstimatorMixin):
                 )
             ) from nfe
 
-        return self.best_estimator_.n_features_in_
+        return self.get_estimator().n_features_in_
 
     @property
     def classes_(self):
@@ -337,4 +337,10 @@ class MetaEstimatorScoreMixin(MetaEstimatorMixin):
         Only available when `refit=True` and the estimator is a classifier.
         """
         _estimator_has("classes_")(self)
-        return self.best_estimator_.classes_
+        return self.get_estimator().classes_
+    
+    def get_estimator(self):
+        try:
+            return self.best_estimator_
+        except AttributeError:
+            return self.estimator_

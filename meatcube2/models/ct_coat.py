@@ -147,10 +147,14 @@ class CtCoAT(ACaseBaseEnergyClassifier):
         If initialized, will copy and update the similarity matrices and the cube."""
         check_is_fitted(self)
         updated_meatcube = CtCoAT(sim_X=self.sim_X,sim_y=self.sim_y)
+        if case_outcome not in self.classes_:
+            classes = self.classes_ + [case_outcome]
+        else:
+            classes = self.classes_
         updated_meatcube.fit(
             X=np.append(self._X, [case_source], axis=0),
             y=np.append(self._y, [case_outcome], axis=0),
-            classes=self.classes_,
+            classes=classes,
             device=self.device_)
         
         # Extend the similarity matrix with the new similarity (if already initialized)
@@ -242,6 +246,9 @@ class CtCoAT(ACaseBaseEnergyClassifier):
         self._compute_sim_matrix()
         self._compute_outcome_sim_vectors()
 
+        if y not in self.classes_:
+            return self.add(X, y).energy_case_from_cb(-1, as_tensor=as_tensor)
+        
         # computes the similarity of the new case to the ones in the CB
         X_sim_vectors = self._source_sim_vect(X)
         label_index = self._outcome_index(y)

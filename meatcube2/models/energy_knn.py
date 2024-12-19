@@ -127,10 +127,14 @@ class EnergyKNN(ACaseBaseEnergyClassifier):
         If initialized, will copy and update the similarity matrices and the cube."""
         check_is_fitted(self)
         updated_knn = EnergyKNN(sim_X=self.sim_X,sim_y=self.sim_y)
+        if case_outcome not in self.classes_:
+            classes = self.classes_ + [case_outcome]
+        else:
+            classes = self.classes_
         updated_knn.fit(
             X=np.append(self._X, [case_source], axis=0),
             y=np.append(self._y, [case_outcome], axis=0),
-            classes=self.classes_,
+            classes=classes,
             device=self.device_)
         
         # Extend the similarity matrix with the new similarity (if already initialized)
@@ -187,11 +191,12 @@ class EnergyKNN(ACaseBaseEnergyClassifier):
     
     def energy_case_from_cb(self, index: int, as_tensor=False):
         # X_sim_matrix_, but with -inf in the diagonal to prevent selecting the case as its own nearest neighbor
-        no_equality_X_sim_matrix_ = torch.masked_fill(self.X_sim_matrix_, torch.eye(self.X_sim_matrix_.size(0), device=self.device_, dtype=bool), -torch.inf)[:,index]
-        no_equality_y_sim_matrix_ = self.y_sim_matrix_[:,index]
+        no_equality_X_sim_matrix_ = torch.masked_fill(self.X_sim_matrix_, torch.eye(self.X_sim_matrix_.size(0), device=self.device_, dtype=bool), -torch.inf)#[:,index]
+        no_equality_y_sim_matrix_ = self.y_sim_matrix_#[:,index]
         
         # because the case is supposed to be removed from the CB, the max number of neighbors is |CB|-1 instead of |CB|
         energy = KNNEnergyComputations.energy_zip_matrix(no_equality_X_sim_matrix_, no_equality_y_sim_matrix_, k=min(self.n_neighbors, len(self)-1))
+        energy = energy[index]
         if as_tensor: return energy
         return energy.cpu().item()
     
@@ -199,8 +204,10 @@ class EnergyKNN(ACaseBaseEnergyClassifier):
         self._compute_sim_matrix()
         self._compute_outcome_sim_vectors()
 
+        if y not in self.classes_:
+            return self.add(X, y).energy_case_from_cb(-1, as_tensor=as_tensor)
+
         # computes the similarity of the new case to the ones in the CB
-        print(self._source_sim_vect(X).size())
         X_sim_vectors = self._source_sim_vect(X).transpose(-1,-2)
         label_index = self._outcome_index(y)
         y_sim_vectors = self.y_sim_vectors_.select(-2, label_index).unsqueeze(-2).transpose(-1,-2)

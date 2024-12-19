@@ -10,6 +10,7 @@ from tqdm.auto import tqdm
 import pickle
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 from sklearn.base import ClassifierMixin, BaseEstimator, clone
+from logging import warning
 
 from meatcube2.models.AbstractEnergyBasedPredictor import ACaseBaseEnergyPredictor
 
@@ -80,10 +81,14 @@ class EnergyClf(ACaseBaseEnergyClassifier):
         If initialized, will copy and update the similarity matrices and the cube."""
         check_is_fitted(self)
         updated_model = EnergyClf(clone(self.model))
+        if case_outcome not in self.classes_:
+            classes = self.classes_ + [case_outcome]
+        else:
+            classes = self.classes_
         updated_model.fit(
             X=np.append(self._X, [case_source], axis=0),
             y=np.append(self._y, [case_outcome], axis=0),
-            classes=self.classes_,
+            classes=classes,
             device=self.fit_kwargs_)
         
         check_is_fitted(updated_model)
@@ -93,20 +98,24 @@ class EnergyClf(ACaseBaseEnergyClassifier):
 # TODO: check output shape
 
     def energy_cb(self, as_tensor=False):
-        energies: np.ndarray = self.model.predict_proba(self.X)
-        indices: np.ndarray = self._outcome_index(self.y)
+        energies: np.ndarray = self.model.predict_proba(self._X)
+        indices: np.ndarray = self._outcome_index(self._y)
         energy = np.take(energies, indices, axis=1).mean()
 
         return energy
     
     def energy_case_from_cb(self, index: int, as_tensor=False):
-        energies: np.ndarray = self.model.predict_proba(self.X[index:index+1])
-        indices: np.ndarray = self._outcome_index(self.y[index:index+1])
+        while index < 0:
+            index += len(self)
+        energies: np.ndarray = self.model.predict_proba(self._X[index:index+1])
+        indices: np.ndarray = self._outcome_index(self._y[index:index+1])
         energy = np.take(energies, indices, axis=1).mean()
         
         return energy
     
     def energy_case_new(self, X: SourceSpaceElement, y: OutcomeSpaceElement, as_tensor=False) -> float:
+        if y not in self.classes_:
+            return self.add(X, y).energy_case_from_cb(-1, as_tensor=as_tensor)
         energies: np.ndarray = self.model.predict_proba(np.array([X]))
         indices: np.ndarray = self._outcome_index(np.array([y]))
         energy = np.take(energies, indices, axis=1).mean()

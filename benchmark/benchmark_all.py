@@ -27,7 +27,6 @@ if __name__ == "__main__":
 
         warning(f"Using device {DEVICE} when compatible")
 
-        sys_argv = sys.argv
 
         # for the weight estimation experiment
         N_SPLITS = 2
@@ -39,6 +38,7 @@ if __name__ == "__main__":
         paths = []
 
         # just to get the --no_tqdm flag
+        sys_argv = sys.argv
         sys.argv = sys_argv[:1] + [benchmark_one.DATASETS[0]] + ["-a", list(benchmark_one.CB_LEARNERS.keys())[0]] + ["-c", list(benchmark_one.CLASSIFIERS.keys())[0]] + sys_argv[1:]
         dummy_args = benchmark_one.parse_args()
         

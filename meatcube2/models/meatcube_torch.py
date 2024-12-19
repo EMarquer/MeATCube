@@ -8,6 +8,7 @@ from scipy.spatial.distance import squareform, pdist, cdist
 from tqdm.auto import tqdm
 import pickle
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
+from logging import warning
 
 from meatcube2.models.AbstractEnergyBasedPredictor import ACaseBaseEnergyPredictor
 
@@ -150,10 +151,14 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
         If initialized, will copy and update the similarity matrices and the cube."""
         check_is_fitted(self)
         updated_meatcube = MeATCubeCB(sim_X=self.sim_X,sim_y=self.sim_y)
+        if case_outcome not in self.classes_:
+            classes = self.classes_ + [case_outcome]
+        else:
+            classes = self.classes_
         updated_meatcube.fit(
             X=np.append(self._X, [case_source], axis=0),
             y=np.append(self._y, [case_outcome], axis=0),
-            classes=self.classes_,
+            classes=classes,
             device=self.device_)
         
         # Extend the similarity matrix with the new similarity (if already initialized)
@@ -172,17 +177,19 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
         if self.X_sim_matrix_ is not None and self.y_sim_matrix_ is not None and self.cube_ is not None:
             inv_ibc, inv_aic, inv_abi, inv_aii, inv_ibi, inv_iic, inv_iii = MeATCubeEnergyComputations._inversions_i(
                 self.X_sim_matrix_, self.y_sim_matrix_, # [..., M, M]
-                source_sim_vect, outcome_sim_vect, # [..., M]
+                source_sim_vect.view(-1), outcome_sim_vect.view(-1), # [..., M]
                 reflexive_sim_source=source_sim_reflexive, reflexive_sim_outcome=outcome_sim_reflexive, # [...] or []
                 exclude_impossible=False)
             
+            updated_meatcube.cube_ = self.cube_.clone()
+
             # from [n, n, n] to [n, n, n+1]
-            updated_meatcube.cube_ = torch.cat([updated_meatcube.cube, inv_abi], dim=-1)
+            updated_meatcube.cube_ = torch.cat([updated_meatcube.cube_, inv_abi.unsqueeze(-1)], dim=-1)
 
             # from [n, n].[n, 1] to [n, n+1]: add the symmetric component of the vector where the diagonal will be
             inv_aic = torch.cat([inv_aic, inv_aii.unsqueeze(-1)], dim=-1)
             # from [n, n, n+1].[n, n+1] to [n, n+1, n+1]
-            updated_meatcube.cube_ = torch.cat([updated_meatcube.cube, inv_aic.unsqueeze(-2)], dim=-2)
+            updated_meatcube.cube_ = torch.cat([updated_meatcube.cube_, inv_aic.unsqueeze(-2)], dim=-2)
 
             # from [n].[] to [n+1]
             inv_iic = torch.cat([inv_iic, inv_iii.unsqueeze(-1)], dim=-1)
@@ -190,7 +197,7 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
             inv_ibc = torch.cat([inv_ibc, inv_ibi.unsqueeze(-1)], dim=-1)
             inv_ibc = torch.cat([inv_ibc, inv_iic.unsqueeze(-2)], dim=-2)
             # from [n, n+1, n+1].[n+1, n+1] to [n+1, n+1, n+1]
-            updated_meatcube.cube_ = torch.cat([updated_meatcube.cube, inv_ibc.unsqueeze(-3)], dim=-3)
+            updated_meatcube.cube_ = torch.cat([updated_meatcube.cube_, inv_ibc.unsqueeze(-3)], dim=-3)
 
         check_is_fitted(updated_meatcube)
         return updated_meatcube
@@ -235,6 +242,9 @@ class MeATCubeCB(ACaseBaseEnergyClassifier):
     def energy_case_new(self, X: SourceSpaceElement, y: OutcomeSpaceElement, as_tensor=False) -> float:
         self._compute_sim_matrix()
         self._compute_outcome_sim_vectors()
+
+        if y not in self.classes_:
+            return self.add(X, y).energy_case_from_cb(-1, as_tensor=as_tensor)
 
         # computes the similarity of the new case to the ones in the CB
         X_sim_vectors = self._source_sim_vect(X)
