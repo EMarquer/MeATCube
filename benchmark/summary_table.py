@@ -11,6 +11,7 @@ import benchmark_one
 from IPython.display import display
 
 INCREMENTAL_ALGOS = {"CNNR", "CkNNR"}
+BEST_STATE_ALGOS = {"EnergyCompress"}
 if __name__ == "__main__":
     summaries = dict()
     sys_argv = sys.argv
@@ -29,6 +30,7 @@ if __name__ == "__main__":
                     max_model = df.sort_values("CB_size", ascending=False).groupby("fold").head(1)
                     #best_model["compression_rate"] = 1. - (best_model["CB_size"].astype(float) / results["args"]["size_S"])
                     best_model["compression_rate"] = best_model["CB_size"].astype(float) / results["args"]["size_S"]
+                    
                     best_initial = pd.concat({"best": best_model, "initial": first_model})
                     result_summary = best_initial[["CB_size", "compression_rate", "test_accuracy"]].groupby(level=0).aggregate(['mean', 'std'])
                     result_summary = result_summary.rename({"test_accuracy": "Accuracy", "CB_size": "|CB|"}, axis=1)
@@ -82,8 +84,10 @@ if __name__ == "__main__":
         ]
         }]
     )
+    t = s
+
+    # Latex
     s = s.to_latex()
-    
     s = s.replace('%', '\%')
     s = s.replace('_', ' ')
     s = s.replace('|CB|', '$|CB|$')
@@ -96,3 +100,14 @@ if __name__ == "__main__":
     s = s.replace("Haberman S Survival", "Haberman's Survival")
     
     print(s)#.style.to_string())
+
+    # html table
+    html = t.to_html()
+    html = html.replace('_', ' ')
+    html = html.replace("Haberman S Survival", "Haberman's Survival")
+
+    dirname = os.path.dirname(benchmark_one.make_result_path(args)) 
+    with open(os.path.join(dirname, "summary.html"), "w") as f:
+        f.write(html)
+    with open(os.path.join(dirname, "..", "summary.html"), "w") as f:
+        f.write(html)
