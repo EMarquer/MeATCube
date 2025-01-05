@@ -252,7 +252,7 @@ class CBClassificationMaintainerBase(MetaEstimatorMixin, ClassifierMixin):
         self.best_index_ = 0
 
         # main loop
-        self.stopping_reason_ = "Reached n_iter"
+        self.stopping_reason_ = ""
         for i in range(self.n_iter_):
             # update the estimator
             try:
@@ -291,7 +291,8 @@ class CBClassificationMaintainerBase(MetaEstimatorMixin, ClassifierMixin):
             if stopping_criterion:
                 self.stopping_reason_ = stopping_reason
                 break
-        
+        if i == self.n_iter_ and not self.stopping_reason_:
+            self.stopping_reason_ = "Reached n_iter"
 
         self.estimator_ = self.best_estimator_
 

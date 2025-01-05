@@ -31,7 +31,7 @@ from ..models.AbstractEnergyBasedClassifier import ACaseBaseEnergyClassifier, Ou
 from ..metrics import clf_prediction_summary
 from ..utils import catchtime
 from ..utils import MetaEstimatorScoreMixin as MetaEstimatorMixin
-from .cb_mainainer import CBClassificationMaintainerBase
+from .cb_maintainer import CBClassificationMaintainerBase
 
 class EnergyBasedMaintainer(CBClassificationMaintainerBase):
     """
@@ -189,6 +189,7 @@ class EnergyBasedMaintainer(CBClassificationMaintainerBase):
         
 
 class EnergyCompress(EnergyBasedMaintainer):
+    """Shorthand for EnergyBasedMaintainer(..., mode="decrement")"""
     def __init__(self,
                  estimator,
                  memorize_estimators = False, 

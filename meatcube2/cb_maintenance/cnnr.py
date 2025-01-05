@@ -33,7 +33,7 @@ from ..models.AbstractEnergyBasedClassifier import ACaseBaseEnergyClassifier, Ou
 from ..metrics import clf_prediction_summary
 from ..utils import catchtime
 from ..utils import MetaEstimatorScoreMixin as MetaEstimatorMixin
-from .energy_compress import CBClassificationMaintainerBase
+from .cb_maintainer import CBClassificationMaintainerBase
 
 class CNNR(CBClassificationMaintainerBase):
     """
@@ -138,7 +138,7 @@ class CNNR(CBClassificationMaintainerBase):
 
         # initialize the kNN with the first case
         if self.use_knn_proxy:
-            self.knn_ = KNeighborsClassifier(n_neighbors=self.n_neighbors)
+            self.knn_ = KNeighborsClassifier(n_neighbors=min(self.n_neighbors, self.X_kept_.shape[0]))
             self.knn_.fit(self.X_kept_, self.y_kept_)
         else:
             self.knn_ = None
@@ -148,7 +148,7 @@ class CNNR(CBClassificationMaintainerBase):
         pre_iter = 0
         while estimator_not_fitted and pre_iter < self.n_iter_:
             try:
-                self.estimator_.fit(self.X_kept_, self.y_kept_)
+                self.estimator_.fit(self.X_kept_, self.y_kept_, **fit_kwargs)
                 estimator_not_fitted = False
             except Exception as e: # ignore fitting errors
                 if not self.use_knn_proxy:
@@ -167,7 +167,7 @@ class CNNR(CBClassificationMaintainerBase):
         super().after_fit_loop()
 
     def stopping_criterion(self, iteration) -> Tuple[bool, str]:
-        stopping_criterion, stopping_reason = super().stopping_criterion(iteration) or not self.change_
+        stopping_criterion, stopping_reason = super().stopping_criterion(iteration)
         if not self.changes_:
             stopping_criterion = True
             stopping_reason = "No change this iteration" if stopping_reason!= "early stopping" else "No change this iteration (and early stopping)"
@@ -208,6 +208,8 @@ class CNNR(CBClassificationMaintainerBase):
                 self.X_kept_ = self.X_[self.kept_cases_]
                 self.y_kept_ = self.y_[self.kept_cases_]
                 if self.use_knn_proxy:
+                    if self.n_neighbors >= self.X_kept_.shape[0]: # create a new kNN if need be to adapt for larger k
+                        self.knn_ = KNeighborsClassifier(n_neighbors=min(self.n_neighbors, self.X_kept_.shape[0]))
                     self.knn_.fit(self.X_kept_, self.y_kept_)
                 else:
                     self.estimator_.fit(self.X_kept_, self.y_kept_)

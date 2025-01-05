@@ -98,7 +98,7 @@ class EnergyClf(ACaseBaseEnergyClassifier):
 # TODO: check output shape
 
     def energy_cb(self, as_tensor=False):
-        energies: np.ndarray = self.model.predict_proba(self._X)
+        energies: np.ndarray = 1-self.model.predict_proba(self._X)
         indices: np.ndarray = self._outcome_index(self._y)
         energy = np.take(energies, indices, axis=1).mean()
 
@@ -107,7 +107,7 @@ class EnergyClf(ACaseBaseEnergyClassifier):
     def energy_case_from_cb(self, index: int, as_tensor=False):
         while index < 0:
             index += len(self)
-        energies: np.ndarray = self.model.predict_proba(self._X[index:index+1])
+        energies: np.ndarray = 1-self.model.predict_proba(self._X[index:index+1])
         indices: np.ndarray = self._outcome_index(self._y[index:index+1])
         energy = np.take(energies, indices, axis=1).mean()
         
@@ -116,7 +116,7 @@ class EnergyClf(ACaseBaseEnergyClassifier):
     def energy_case_new(self, X: SourceSpaceElement, y: OutcomeSpaceElement, as_tensor=False) -> float:
         if y not in self.classes_:
             return self.add(X, y).energy_case_from_cb(-1, as_tensor=as_tensor)
-        energies: np.ndarray = self.model.predict_proba(np.array([X]))
+        energies: np.ndarray = 1-self.model.predict_proba(np.array([X]))
         indices: np.ndarray = self._outcome_index(np.array([y]))
         energy = np.take(energies, indices, axis=1).mean()
 
@@ -124,7 +124,7 @@ class EnergyClf(ACaseBaseEnergyClassifier):
     def energy_cases_new(self,
                          X: Iterable[SourceSpaceElement],
                          y: Iterable[OutcomeSpaceElement], as_tensor=False) -> torch.FloatTensor:
-        energies: np.ndarray = self.model.predict_proba(X)
+        energies: np.ndarray = 1-self.model.predict_proba(X)
         indices: np.ndarray = self._outcome_index(y)
 
         # identify indices that do not belong to the known classes, and replace with class 0

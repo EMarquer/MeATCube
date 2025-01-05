@@ -58,7 +58,7 @@ class EnergyKNN(ACaseBaseEnergyClassifier):
         ----------
         sim_X : the similarity measure for the source space
         sim_y : the similarity measure for the outcome space
-        k : int (default=3)
+        n_neighbors : int (default=3)
             the number of neighbors to consider
         precompute_sim_matrix : bool (default=False)
             whether to compute the similarity matrices and vector during .fit or delay until first calls to energy_cb

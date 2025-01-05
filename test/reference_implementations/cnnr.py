@@ -6,7 +6,7 @@ import pandas as pd
 from scipy.spatial.distance import euclidean
 from sklearn.neighbors import KNeighborsClassifier
 
-
+from logging import warning, info
 
 def euclidean_sim(x1, x2):
     return np.exp(-euclidean(x1, x2))
@@ -34,7 +34,7 @@ class CNN():
         folds = config.generated_train_validation_test_sets()
         for (i, fold) in enumerate(folds):
             (X_S, y_S, X_V, y_V, X_T, y_T) = (X[fold['S']], y[fold['S']], X[fold['V']], y[fold['V']], X[fold['T']], y[fold['T']])
-            print(f'cnnr({config.dataset_name}) -- fold {i+1}/{len(folds)} |S|={len(X_S)} |V|={len(X_V)} |T|={len(X_T)}')
+            info(f'cnnr({config.dataset_name}) -- fold {i+1}/{len(folds)} |S|={len(X_S)} |V|={len(X_V)} |T|={len(X_T)}')
             store = (np.array([X_S[0]]), np.array([y_S[0]]))
             clf.fit(*store)
             

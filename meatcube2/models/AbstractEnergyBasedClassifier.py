@@ -33,6 +33,7 @@ from sklearn.base import ClassifierMixin, RegressorMixin, BaseEstimator, MetaEst
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 from scipy.special import softmax
 from ..utils import to_numpy_array
+from logging import warning, info, error
 
 class ACaseBaseEnergyClassifier(BaseEstimator, ClassifierMixin, ACaseBaseEnergyPredictor):
     """
@@ -232,9 +233,9 @@ class ACaseBaseEnergyClassifier(BaseEstimator, ClassifierMixin, ACaseBaseEnergyP
         energies = self.energy_cases_new(X, candidate_classes, as_tensor=True)
         
         if (isinstance(energies, torch.Tensor) and torch.isinf(energies).any()):
-            print(type(self))
-            print(energies.cpu().tolist())
-            print(np.isnan(energies.cpu().tolist()).any(), np.isinf(energies.cpu().tolist()).any())
+            error(type(self))
+            error(energies.cpu().tolist())
+            error(np.isnan(energies.cpu().tolist()).any(), np.isinf(energies.cpu().tolist()).any())
             raise ValueError()
         
         # get class/outcome indices minimizing the energy
@@ -335,7 +336,7 @@ class ACaseBaseEnergyClassifier(BaseEstimator, ClassifierMixin, ACaseBaseEnergyP
         try:
             check_X_y(X,y,  accept_sparse=True, dtype=None, ensure_2d=False, allow_nd=False)
         except ValueError:
-            print(X,y)
+            error(X,y)
         if isinstance(X, (str)): raise TypeError
         if isinstance(y, (str)): raise TypeError
         # if isinstance(X, (np.ndarray)) and X.dtype in [object]: raise TypeError

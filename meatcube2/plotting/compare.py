@@ -18,7 +18,7 @@ from sklearn.decomposition import PCA
 from sklearn.pipeline import Pipeline
 
 from ..models.AbstractEnergyBasedClassifier import ACaseBaseEnergyClassifier
-from ..cb_maintenance import CBClassificationMaintainer
+from ..cb_maintenance import CBClassificationMaintainerBase
 
 
 class InvertPCA(ClassifierMixin):

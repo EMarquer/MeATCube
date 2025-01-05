@@ -4,6 +4,8 @@ Coming soon:
 - Anaconda package
 - Pip package
 
+The `inamoriISel` (for "**inamori**1932's **i**nstance **sel**ection") folder is taken from https://github.com/inamori1932/instance-selection-approaches (permalink: https://github.com/inamori1932/instance-selection-approaches/tree/a857d9c88a9d92e55083f8607932502cb989d7bf/src/main/python/iSel), that is under MIT License.
+
 ## Install
 ### In a Git repository: add as a submodule
 First time:

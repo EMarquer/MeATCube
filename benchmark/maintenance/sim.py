@@ -12,6 +12,7 @@ from sklearn.neighbors import NeighborhoodComponentsAnalysis
 from sklearn.neighbors import KNeighborsClassifier
 from functools import cache
 from scipy.special import softmax
+from logging import warning
 
 class MultivaluedSimilarity():
     def __init__(self, numeric_attributes: List[int], symbolic_attributes: List[int]) -> None:
@@ -127,7 +128,7 @@ class MultivaluedSimilarity():
             
             # find combinations of weights
             iter_per_weight = np.floor(np.power((max_iter - 1), (1/len(self.att_weights)))).astype(int).item()
-            print([list(range(1, iter_per_weight + 1))] * len(self.att_weights))
+            warning([list(range(1, iter_per_weight + 1))] * len(self.att_weights))
             np.stack(np.meshgrid(
                 *([list(range(1, iter_per_weight + 1))] * len(self.att_weights)) # 
             ), -1)

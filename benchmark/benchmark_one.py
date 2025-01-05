@@ -11,6 +11,7 @@ from logging import warning, info, error
 from tqdm.contrib.logging import logging_redirect_tqdm
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
+from functools import partial
 
 # as the code is loaded from a subfolder, we use the following snippet to add meatcube2 to the import path
 # for a normal usage with meatcube2 installed, the two following lines are unnecessary
@@ -23,7 +24,8 @@ sys.path.append(os.path.join(CURRENT_FOLDER, ".."))
 
 # we load meatcube2 
 from meatcube2.models import MeATCubeCB, CtCoAT, CtCoATNaive, EnergyKNN, EnergyClf, AbstractEnergyBasedClassifier
-from meatcube2.cb_maintenance import EnergyCompress, CNNR
+from meatcube2.cb_maintenance import EnergyCompress, CNNR, InamoriISelSingleStep
+from meatcube2.cb_maintenance.inamori import INAMORY_I_SEL_METHODS
 from meatcube2.metrics import confidence, clf_prediction_summary
 
 from scipy.linalg import norm
@@ -44,7 +46,7 @@ def class_equality_sim(y1,y2):
 # load the preprocessed dataset
 from benchmark.maintenance.preprocess.dataset_utils import load_dataset_from_pickle, DATASETS
 
-VERSION = "0.1"
+VERSION = "0.2"
 RANDOM_STATE = 0
 
 
@@ -63,9 +65,23 @@ CLASSIFIERS = {
     "SVM-linear":     (lambda sim_X, sim_y, args: EnergyClf(SVC(kernel="linear", probability=True))),
 }
 
+
 CB_LEARNERS = {
-    "EnergyCompress":   EnergyCompress,
-    "CNNR":             CNNR,
+    "EnergyCompress":   (lambda args: EnergyCompress),
+    "CNNR":             (lambda args: CNNR),
+    "CkNNR":            (lambda args: partial(CNNR, n_neighbors=args.k)),
+
+    'cnn':   (lambda args: partial(InamoriISelSingleStep, method='cnn')),
+    'enn':   (lambda args: partial(InamoriISelSingleStep, method='enn')),
+    'icf':   (lambda args: partial(InamoriISelSingleStep, method='icf')),
+    'lssm':  (lambda args: partial(InamoriISelSingleStep, method='lssm')),
+    'ldis':  (lambda args: partial(InamoriISelSingleStep, method='ldis')),
+    'cdis':  (lambda args: partial(InamoriISelSingleStep, method='cdis')),
+    'xldis': (lambda args: partial(InamoriISelSingleStep, method='xldis')),
+    'psdsp': (lambda args: partial(InamoriISelSingleStep, method='psdsp')),
+    'ib3':   (lambda args: partial(InamoriISelSingleStep, method='ib3')),
+    'egdis': (lambda args: partial(InamoriISelSingleStep, method='egdis')),
+    #'cis':   (lambda args: partial(InamoriISelSingleStep, method='cis')),
 }
 
 # argument parsing
@@ -77,22 +93,22 @@ def parse_args(arg_string=None)  -> argparse.Namespace:
     parser.add_argument("dataset", type=str, help="the name of the dataset",  choices=DATASETS)
 
     parser.add_argument(
-        "-a", "--algo", type=str, help="the case base learning algorithm", choices=CB_LEARNERS.keys()
+        "-a", "--algo", type=str, help="the case base learning algorithm", choices=CB_LEARNERS.keys(), default="EnergyCompress"
     )
     parser.add_argument(
         "-c", "--classifier", type=str, help="the case base prediction algorithm", choices=CLASSIFIERS.keys()
     )
     parser.add_argument(
         "-m", "--margin", type=float, default=1e-3,
-        help="the margin to use in the hinge loss (default: 1e-3)"
+        help="the margin to use in the hinge loss of the energy-compress algorithm (default: 1e-3)"
     )
     parser.add_argument(
         "-k", "--k", type=int, default=7,
         help="the k parameter for kNN, CNNR, or APC algorithms (default: 7)"
     )
     parser.add_argument(
-        "-f", "--folds", type=int, default=3,
-        help="the number of folds used for cross validation (default: 3)"
+        "-f", "--folds", type=int, default=10,
+        help="the number of folds used for cross validation (default: 10)"
     )
 
     parser.add_argument(
@@ -323,15 +339,8 @@ def main(args=None, arg_string=None, device='cpu'):
                 else: raise ValueError("Unsupported classifier")
 
                 # create the compression algo
-                if args.algo == "EnergyCompress":
-                    maintainer = EnergyCompress(
-                        model,
-                        memorize_estimators=True,
-                        scoring=test_ref_clf_prediction_summary,
-                        refit="ref_accuracy",
-                        patience=-1)
-                if args.algo == "CNNR":
-                    maintainer = CNNR(
+                if args.algo in CB_LEARNERS.keys():
+                    maintainer = CB_LEARNERS[args.algo](args)(
                         model,
                         memorize_estimators=True,
                         scoring=test_ref_clf_prediction_summary,
