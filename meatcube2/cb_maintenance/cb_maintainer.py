@@ -262,6 +262,9 @@ class CBClassificationMaintainerBase(MetaEstimatorMixin, ClassifierMixin):
                 if "All-NaN slice encountered" in str(e):
                     self.stopping_reason_ = "All-NaN slice encountered in update"
                     break
+                elif "Estimator could not be fitted on full dataset" in str(e):
+                    self.stopping_reason_ = e
+                    break
                 else: 
                     self.stopping_reason_ = e
                     raise e

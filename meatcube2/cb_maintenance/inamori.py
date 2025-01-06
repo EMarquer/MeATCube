@@ -112,6 +112,9 @@ class InamoriISelSingleStep(CBClassificationMaintainerBase):
         self.removed_cases_ = []
         self.X_kept_, self.y_kept_ = self.X_, self.y_
 
+
+        self.final_fit_failure = False
+
         # try to fit the estimator
         estimator_not_fitted = True
         pre_iter = 0
@@ -139,6 +142,11 @@ class InamoriISelSingleStep(CBClassificationMaintainerBase):
         self.kept_cases_ = idx
         self.removed_cases_ = set(range(len(self.X_))).difference(idx)
         self.X_kept_, self.y_kept_ =  self.X_[idx], self.y_[idx]
-        self.estimator_.fit(self.X_kept_, self.y_kept_)
-        
+        try:
+            self.estimator_.fit(self.X_kept_, self.y_kept_)
+        except ValueError as e: # ignore fitting errors
+            error(f"Estimator could not be fitted on full dataset:")
+            error(e)
+            self.final_fit_failure = True
+            raise ValueError("Estimator could not be fitted on full dataset")
         
