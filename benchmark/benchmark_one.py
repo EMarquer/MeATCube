@@ -59,7 +59,7 @@ APPLY_SCALING = True
 CLASSIFIERS = {
     "CoAT":         MeATCubeCB,
     "CtCoAT":       CtCoAT,
-    "kNN":          EnergyKNN,
+    "kNN":          (lambda sim_X, sim_y, args: EnergyKNN(sim_X=sim_X, sim_y=sim_y, n_neighbors=args.k, precompute_sim_matrix=True)),
     "SVM-poly":     (lambda sim_X, sim_y, args: EnergyClf(SVC(kernel="poly", probability=True))),
     "SVM-rbf":     (lambda sim_X, sim_y, args: EnergyClf(SVC(kernel="rbf", probability=True))),
     "SVM-linear":     (lambda sim_X, sim_y, args: EnergyClf(SVC(kernel="linear", probability=True))),

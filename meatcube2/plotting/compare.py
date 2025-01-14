@@ -22,14 +22,20 @@ from ..cb_maintenance import CBClassificationMaintainerBase
 
 
 class InvertPCA(ClassifierMixin):
-    def __init__(self, pca, clf) -> None:
+    def __init__(self, pca: PCA, clf: ClassifierMixin) -> None:
         super().__init__()
         self.clf = clf
         self.pca = pca
-    def predict(self, X, **kwargs):
-        return self.clf.predict(self.pca.inverse_transform(X), **kwargs)
-    def predict_proba(self, X, **kwargs):
-        return self.clf.predict_proba(self.pca.inverse_transform(X), **kwargs)
+    def predict(self, X: np.ndarray, **kwargs):
+        X_ = np.zeros((X.shape[0], self.pca.n_features_), dtype=X.dtype)
+        X_[:,:X.shape[1]] = X
+        X_ = self.pca.inverse_transform(X_)
+        return self.clf.predict(X_, **kwargs)
+    def predict_proba(self, X: np.ndarray, **kwargs):
+        X_ = np.zeros((X.shape[0], self.pca.n_features_), dtype=X.dtype)
+        X_[:,:X.shape[1]] = X
+        X_ = self.pca.inverse_transform(X_)
+        return self.clf.predict_proba(X_, **kwargs)
     def __sklearn_is_fitted__(self):
         return True
     def fit(self, X, y):
@@ -72,7 +78,7 @@ def plot_dataset_model_grid_autosplit(datasets: List,
                             fit_estimators=True,
                             DecisionBoundaryDisplay_kwargs=None) -> Tuple[plt.Figure, plt.Axes]:
     
-    require_ref_set = any(isinstance(clf, CBClassificationMaintainer) for clf in classifiers)
+    require_ref_set = any(isinstance(clf, CBClassificationMaintainerBase) for clf in classifiers)
     datasets_split = split_datasets(datasets, require_ref_set)
     
 
@@ -89,7 +95,6 @@ def plot_dataset_model_grid_autosplit(datasets: List,
         fit_estimators,
         DecisionBoundaryDisplay_kwargs)
 
-
 def plot_dataset_model_grid(datasets_split: Union[List[Tuple[Any, Any]], List[Tuple[Any, Any, Any]]],
                             dataset_names: List[str],
                             classifiers: List,
@@ -101,7 +106,7 @@ def plot_dataset_model_grid(datasets_split: Union[List[Tuple[Any, Any]], List[Tu
                             axes: plt.Axes=None,
                             fit_estimators=True,
                             size_as_decrement_score=False,
-                            DecisionBoundaryDisplay_kwargs=None) -> Tuple[plt.Figure, plt.Axes]:
+                            DecisionBoundaryDisplay_kwargs=None,) -> Tuple[plt.Figure, plt.Axes]:
     """_summary_
 
     Parameters
@@ -144,7 +149,7 @@ def plot_dataset_model_grid(datasets_split: Union[List[Tuple[Any, Any]], List[Tu
                 check_is_fitted(clf)
 
     # check if there is maintenance planed, and if there is make sure every dataset is equipped with train-dev-test sets
-    if any(isinstance(clf, CBClassificationMaintainer) for clf in classifiers):
+    if any(isinstance(clf, CBClassificationMaintainerBase) for clf in classifiers):
         for dataset, dataset_name in zip(datasets_split, dataset_name):
             assert len(dataset) >= 3, f"Dataset '{dataset_name}' does not contain a train/dev/test split, however the dev set is required for case base maintenance"
 
@@ -185,16 +190,22 @@ def plot_dataset_model_grid(datasets_split: Union[List[Tuple[Any, Any]], List[Tu
                 X, y = np.concatenate([X_train, X_ref, X_test], axis=0), np.concatenate([y_train, y_ref, y_test], axis=0)
 
             if len(X[0]) > 2: # dimensionality reduction
-                pca = PCA(n_components=2, random_state=42)
-                X = pca.fit_transform(X)
+                pca = PCA(n_components=len(X[0]), random_state=42)
+                X_ = pca.fit_transform(X)
                 dimensionality_reduction = True
-                X_train_ = pca.transform(X_train)
-                X_ref_ = pca.transform(X_ref)
-                X_test_ = pca.transform(X_test)
-            else: dimensionality_reduction = False
+                X_train_ =  pca.transform(X_train)[:,:2]
+                X_ref_ =    pca.transform(X_ref)[:,:2]
+                X_test_ =   pca.transform(X_test)[:,:2]
+                X_ = X_[:,:2]
+            else:
+                dimensionality_reduction = False
+                X_train_ = X_train
+                X_ref_ = X_ref
+                X_test_ = X_test
+                X_ = X
 
-            x_min, x_max = X[:, 0].min() - 0.5, X[:, 0].max() + 0.5
-            y_min, y_max = X[:, 1].min() - 0.5, X[:, 1].max() + 0.5
+            x_min, x_max = X_[:, 0].min() - 0.5, X_[:, 0].max() + 0.5
+            y_min, y_max = X_[:, 1].min() - 0.5, X_[:, 1].max() + 0.5
 
             # just plot the dataset first
             cm = plt.cm.RdBu
@@ -243,7 +254,7 @@ def plot_dataset_model_grid(datasets_split: Union[List[Tuple[Any, Any]], List[Tu
                 # X_test = scaler.transform(X_test)
                 # X_test = scaler.transform(X_test)
 
-                if isinstance(clf, CBClassificationMaintainer):
+                if isinstance(clf, CBClassificationMaintainerBase):
                     if fit_estimators:
                         clf.fit(X_train, y_train, X_ref=X_ref, y_ref=y_ref, warm_start=False, increment_init=0.1)
                     message_bonus = f" |CB|: {clf.initial_estimator_len_} -> {len(clf)}"
@@ -374,7 +385,7 @@ def animate_dataset_model_grid_on_models_autosplit(
         size_as_decrement_score=False,
         DecisionBoundaryDisplay_kwargs=None) -> Tuple[FuncAnimation, plt.Figure , plt.Axes]:
 
-    require_ref_set = any(isinstance(clf, CBClassificationMaintainer) for clf in classifiers)
+    require_ref_set = any(isinstance(clf, CBClassificationMaintainerBase) for clf in classifiers)
     datasets_split = split_datasets(datasets, require_ref_set)
     
     return animate_dataset_model_grid_on_models(
