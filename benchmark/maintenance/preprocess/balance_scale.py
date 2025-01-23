@@ -2,8 +2,14 @@ import pandas as pd
 try:
     from . import dataset_utils as utils
 except ImportError:
-    import benchmark.maintenance.preprocess.dataset_utils as utils
-
+    try:
+        import dataset_utils as utils
+    except ImportError:
+        import sys, os
+        THIS_FOLDER = os.path.dirname(__file__)
+        sys.path.append(THIS_FOLDER)
+        import dataset_utils as utils
+        
 columns = ["Class Name", "Left-Weight", "Left-Distance", "Right-Weight", "Right-Distance"]
 target_column = "Class Name"
 numeric_columns = ["Left-Weight", "Left-Distance", "Right-Weight", "Right-Distance"]

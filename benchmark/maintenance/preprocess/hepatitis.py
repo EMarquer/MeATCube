@@ -2,7 +2,13 @@ import pandas as pd
 try:
     from . import dataset_utils as utils
 except ImportError:
-    import benchmark.maintenance.preprocess.dataset_utils as utils
+    try:
+        import dataset_utils as utils
+    except ImportError:
+        import sys, os
+        THIS_FOLDER = os.path.dirname(__file__)
+        sys.path.append(THIS_FOLDER)
+        import dataset_utils as utils
 
 columns = ["Class","AGE","SEX","STEROID","ANTIVIRALS","FATIGUE","MALAISE","ANOREXIA","LIVER BIG","LIVER FIRM","SPLEEN PALPABLE","SPIDERS","ASCITES","VARICES","BILIRUBIN","ALK PHOSPHATE","SGOT","ALBUMIN","PROTIME","HISTOLOGY"]
 target_column = "Class"

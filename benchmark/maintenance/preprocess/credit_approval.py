@@ -2,8 +2,14 @@ import pandas as pd
 try:
     from . import dataset_utils as utils
 except ImportError:
-    import benchmark.maintenance.preprocess.dataset_utils as utils
-
+    try:
+        import dataset_utils as utils
+    except ImportError:
+        import sys, os
+        THIS_FOLDER = os.path.dirname(__file__)
+        sys.path.append(THIS_FOLDER)
+        import dataset_utils as utils
+        
 columns = [f"A{n}" for n in range(1, 17)]
 target_column = "A16"
 numeric_columns = [f"A{n}" for n in [2,3,8,11,14,15]]

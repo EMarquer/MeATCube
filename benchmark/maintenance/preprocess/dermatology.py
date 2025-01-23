@@ -2,7 +2,13 @@ import pandas as pd
 try:
     from . import dataset_utils as utils
 except ImportError:
-    import benchmark.maintenance.preprocess.dataset_utils as utils
+    try:
+        import dataset_utils as utils
+    except ImportError:
+        import sys, os
+        THIS_FOLDER = os.path.dirname(__file__)
+        sys.path.append(THIS_FOLDER)
+        import dataset_utils as utils
 
 columns = [n for n in range(1, 36)]
 target_column = 35

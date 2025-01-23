@@ -4,7 +4,13 @@ import pandas as pd
 try:
     from . import dataset_utils as utils
 except ImportError:
-    import benchmark.maintenance.preprocess.dataset_utils as utils
+    try:
+        import dataset_utils as utils
+    except ImportError:
+        import sys, os
+        THIS_FOLDER = os.path.dirname(__file__)
+        sys.path.append(THIS_FOLDER)
+        import dataset_utils as utils
 
 columns = ["TA is a native English speaker","Course instructor","Course","Summer or regular semester","Class size","Class attribute"]
 target_column = "Class attribute"

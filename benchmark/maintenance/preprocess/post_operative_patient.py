@@ -4,7 +4,13 @@ import pandas as pd
 try:
     from . import dataset_utils as utils
 except ImportError:
-    import benchmark.maintenance.preprocess.dataset_utils as utils
+    try:
+        import dataset_utils as utils
+    except ImportError:
+        import sys, os
+        THIS_FOLDER = os.path.dirname(__file__)
+        sys.path.append(THIS_FOLDER)
+        import dataset_utils as utils
 
 columns = ["L-CORE","L-SURF","L-O2","L-BP","SURF-STBL","CORE-STBL","BP-STBL","COMFORT","decision ADM-DECS"]
 target_column = "decision ADM-DECS"

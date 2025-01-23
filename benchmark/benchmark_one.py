@@ -99,8 +99,8 @@ def parse_args(arg_string=None)  -> argparse.Namespace:
         "-c", "--classifier", type=str, help="the case base prediction algorithm", choices=CLASSIFIERS.keys()
     )
     parser.add_argument(
-        "-m", "--margin", type=float, default=1e-3,
-        help="the margin to use in the hinge loss of the energy-compress algorithm (default: 1e-3)"
+        "-m", "--margin", type=float, default=1e-1,
+        help="the margin to use in the hinge loss of the energy-compress algorithm (default: 1e-1)"
     )
     parser.add_argument(
         "-k", "--k", type=int, default=7,
@@ -349,7 +349,7 @@ def main(args=None, arg_string=None, device='cpu'):
                 else: raise ValueError(f"Unsupported algo: '{args.algo}'")
 
                 # run the compression algo
-                maintainer.fit(X_train, y_train, X_ref, y_ref, fit_kwargs={"device": device})
+                maintainer.fit(X_train, y_train, X_ref, y_ref, fit_kwargs={"device": device, "margin": args.margin})
 
                 # )
                 records += maintainer.results_
