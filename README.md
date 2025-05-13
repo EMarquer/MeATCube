@@ -9,8 +9,11 @@ Many thanks to the authors for making their code accessible.
 
 How to cite:
 ```bib
-@inproceedings{energycompress,
-    note={To be added upon acceptance}
+@inproceedings{energycompress:2025:ijcai,
+  title           = {{EnergyCompress: A General Case Base Learning Strategy}},
+  author          = {Esteban Marquer and Fadi Badra and Marie{-}Jeanne Lesot and Miguel Couceiro and David Leake},
+  year            = {2025},
+  booktitle       = {IJCAI}
 }
 ```
 
